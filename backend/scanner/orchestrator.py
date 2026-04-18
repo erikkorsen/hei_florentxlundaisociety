@@ -3,41 +3,46 @@ import time
 from urllib.parse import urlparse
 
 from models import Finding, Severity, Category, ScanRequest, ScanResponse
+from scanner import secrets_scanner, ssl_checker, port_scanner, admin_panel
+
+SEVERITY_ORDER = {Severity.CRITICAL: 0, Severity.HIGH: 1, Severity.MEDIUM: 2, Severity.PASS: 3}
 
 
 async def run_scan(request: ScanRequest) -> ScanResponse:
     start = time.time()
+    parsed = urlparse(request.url)
+    hostname = parsed.hostname or ""
 
-    # Stub: return hardcoded findings for now
-    findings = [
-        Finding(
-            id="secrets_env",
-            severity=Severity.CRITICAL,
-            title=".env file publicly accessible",
-            description=f"The file /.env responded with HTTP 200 at {request.url}/.env. It may contain database credentials, API keys, or other secrets.",
-            affected=f"{request.url.rstrip('/')}/.env",
-            fix="Block access to this path in your web server config. Rotate any credentials the file contains immediately.",
-            category=Category.SECRETS,
-        ),
-        Finding(
-            id="ssl_valid",
-            severity=Severity.PASS,
-            title="SSL certificate valid and HTTPS enforced",
-            description="The SSL certificate is valid and the site redirects HTTP to HTTPS.",
-            affected=request.url,
-            fix="No action needed.",
-            category=Category.SSL,
-        ),
-        Finding(
-            id="ports_clean",
-            severity=Severity.PASS,
-            title="No dangerous ports open",
-            description="None of the checked ports (22, 21, 3389, 3306, 5432, 27017, 6379, 2375) are open.",
-            affected=urlparse(request.url).hostname or request.url,
-            fix="No action needed.",
-            category=Category.PORTS,
-        ),
+    tasks = [
+        secrets_scanner.scan(request.url),
+        ssl_checker.scan(request.url),
+        port_scanner.scan(hostname),
+        admin_panel.scan(request.url),
     ]
+
+    results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=30)
+
+    findings: list[Finding] = []
+    for result in results:
+        if isinstance(result, list):
+            findings.extend(result)
+        # Exceptions from individual scanners are silently skipped
+
+    # Firewall inference: 3+ open ports → CRITICAL
+    open_port_count = sum(1 for f in findings if f.category == Category.PORTS and f.severity != Severity.PASS)
+    if open_port_count >= 3:
+        findings.append(Finding(
+            id="firewall_disabled",
+            severity=Severity.CRITICAL,
+            title="Firewall likely disabled",
+            description=f"{open_port_count} dangerous ports are open on {hostname}, suggesting no firewall is in place.",
+            affected=hostname,
+            fix="Enable a firewall and restrict inbound traffic to only necessary ports (typically 80 and 443).",
+            category=Category.FIREWALL,
+        ))
+
+    # Sort: CRITICAL first, then HIGH, MEDIUM, PASS
+    findings.sort(key=lambda f: SEVERITY_ORDER.get(f.severity, 99))
 
     duration = round(time.time() - start, 2)
 
