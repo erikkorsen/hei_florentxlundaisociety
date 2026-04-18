@@ -1,4 +1,5 @@
 import asyncio
+import re
 
 import httpx
 
@@ -22,13 +23,64 @@ PROBES = [
 
 DESCRIPTION = "This panel is accessible from the internet. Ensure only authorized users have credentials, and consider restricting access by IP."
 
+SOFT_404_SIGNALS = [
+    "page not found", "404 not found", "not found", "error 404",
+    "doesn't exist", "does not exist", "page could not be found",
+    "nothing here", "no page",
+    "sidan hittades inte", "siden ble ikke funnet",
+    "seite nicht gefunden", "page introuvable",
+]
 
-async def _probe(client: httpx.AsyncClient, base: str, probe_id: str, path: str, severity: Severity, title: str) -> Finding | None:
+TITLE_404 = re.compile(r"<title[^>]*>[^<]*(404|not found)[^<]*</title>", re.IGNORECASE)
+
+
+async def _get_canary(client: httpx.AsyncClient, base: str) -> dict | None:
+    try:
+        resp = await client.get(f"{base}/.xz9k_admin_canary_404")
+        if resp.status_code == 200:
+            return {
+                "content_type": resp.headers.get("content-type", "").split(";")[0].strip().lower(),
+                "length": len(resp.text),
+                "body_prefix": resp.text[:200],
+            }
+    except httpx.RequestError:
+        pass
+    return None
+
+
+def _is_soft_404(resp: httpx.Response, canary: dict | None) -> bool:
+    body = resp.text[:2000]
+    body_lower = body.lower()
+
+    # Check body text
+    if any(sig in body_lower for sig in SOFT_404_SIGNALS):
+        return True
+
+    # Check title tag
+    if TITLE_404.search(body):
+        return True
+
+    # Check against canary
+    if canary:
+        ct = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+        if ct == canary["content_type"]:
+            if resp.text[:200] == canary["body_prefix"]:
+                return True
+            clen = canary["length"]
+            if clen > 0 and abs(len(resp.text) - clen) / clen < 0.2:
+                return True
+
+    return False
+
+
+async def _probe(client: httpx.AsyncClient, base: str, probe_id: str, path: str, severity: Severity, title: str, canary: dict | None) -> Finding | None:
     try:
         url = f"{base}{path}"
         resp = await client.get(url)
 
         if resp.status_code == 200:
+            if _is_soft_404(resp, canary):
+                return None
             return Finding(
                 id=probe_id,
                 severity=severity,
@@ -60,8 +112,9 @@ async def scan(host_url: str) -> list[Finding]:
 
     try:
         async with httpx.AsyncClient(follow_redirects=False, timeout=5) as client:
+            canary = await _get_canary(client, base)
             results = await asyncio.gather(
-                *[_probe(client, base, pid, path, sev, title) for pid, path, sev, title in PROBES]
+                *[_probe(client, base, pid, path, sev, title, canary) for pid, path, sev, title in PROBES]
             )
     except httpx.RequestError:
         return []

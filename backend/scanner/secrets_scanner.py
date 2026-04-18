@@ -8,19 +8,34 @@ from scanner.llm_content_analyzer import analyze_exposed_file
 
 ROBOTS_SENSITIVE = re.compile(r"(admin|backup|config|internal|api|secret|private)", re.IGNORECASE)
 
-# Paths where a text/html response is a legitimate result (not a soft 404)
-HTML_OK_PATHS = {"/phpinfo.php", "/server-status", "/api-docs"}
+# For these paths, a text/html response CAN be legitimate — but we still
+# check the content to make sure it's the real thing, not a soft 404.
+HTML_OK_PATHS = {
+    "/phpinfo.php": ["php version", "configuration", "phpinfo()"],
+    "/server-status": ["apache server status", "server uptime", "requests/sec"],
+    "/api-docs": ["swagger", "openapi", "api documentation", "endpoints"],
+}
 
 # Phrases that indicate a custom "not found" page returning HTTP 200 (soft 404)
 SOFT_404_SIGNALS = [
     "this site does not exist",
     "page not found",
     "404 not found",
+    "not found",
+    "error 404",
     "doesn't exist",
     "does not exist",
     "page could not be found",
     "nothing here",
+    "no page",
+    "sidan hittades inte",
+    "siden ble ikke funnet",
+    "seite nicht gefunden",
+    "page introuvable",
 ]
+
+# Check the <title> tag for 404 signals too
+TITLE_404 = re.compile(r"<title[^>]*>[^<]*(404|not found)[^<]*</title>", re.IGNORECASE)
 
 CREDENTIAL_PATTERNS = re.compile(
     r"(PASSWORD|SECRET|API_KEY|APIKEY|TOKEN|DATABASE_URL|DB_PASS|AWS_SECRET|PRIVATE_KEY)\s*[=:]",
@@ -104,18 +119,66 @@ FIX_TEXT = (
 )
 
 
-async def _probe(client: httpx.AsyncClient, base: str, probe_id: str, path: str, severity: Severity, title: str) -> Finding | None:
+async def _get_canary_fingerprint(client: httpx.AsyncClient, base: str) -> dict | None:
+    """Hit a path that definitely doesn't exist. Store the response fingerprint."""
+    try:
+        resp = await client.get(f"{base}/.xz9k_canary_test_404")
+        if resp.status_code == 200:
+            return {
+                "status": 200,
+                "content_type": resp.headers.get("content-type", "").split(";")[0].strip().lower(),
+                "length": len(resp.text),
+                "body_prefix": resp.text[:200],
+            }
+    except httpx.RequestError:
+        pass
+    return None
+
+
+def _matches_canary(resp: httpx.Response, canary: dict | None) -> bool:
+    """Check if a probe response looks like the canary (i.e. server returns 200 for everything)."""
+    if canary is None:
+        return False
+    ct = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+    body = resp.text
+    # Same content type and similar length (within 20% or same body prefix)
+    if ct == canary["content_type"]:
+        if body[:200] == canary["body_prefix"]:
+            return True
+        canary_len = canary["length"]
+        if canary_len > 0 and abs(len(body) - canary_len) / canary_len < 0.2:
+            return True
+    return False
+
+
+async def _probe(client: httpx.AsyncClient, base: str, probe_id: str, path: str, severity: Severity, title: str, canary: dict | None = None) -> Finding | None:
     try:
         url = f"{base}{path}"
         resp = await client.get(url)
 
         if resp.status_code == 200:
-            # Soft-404 detection: sites that return 200 for any path with a custom error page
+            # Canary match: server returns 200 for non-existent paths too
+            if _matches_canary(resp, canary):
+                return None
+
             content_type = resp.headers.get("content-type", "").split(";")[0].strip().lower()
-            if content_type == "text/html" and path not in HTML_OK_PATHS:
+            body_lower = resp.text[:2000].lower()
+
+            # Soft-404: check body text and title tag
+            if any(sig in body_lower for sig in SOFT_404_SIGNALS):
                 return None
-            if any(sig in resp.text[:2000].lower() for sig in SOFT_404_SIGNALS):
+            if TITLE_404.search(resp.text[:2000]):
                 return None
+
+            # HTML responses: only allow for specific paths IF the content proves it's real
+            if content_type == "text/html":
+                expected_markers = HTML_OK_PATHS.get(path)
+                if expected_markers is None:
+                    # Not a known HTML-ok path — HTML response means soft 404
+                    return None
+                if not any(m in body_lower for m in expected_markers):
+                    # Known path but content doesn't match what we'd expect — soft 404
+                    return None
 
             body = resp.text[:10000]
             regex_extra = _analyze_content(path, body)
@@ -229,8 +292,11 @@ async def scan(host_url: str) -> list[Finding]:
 
     try:
         async with httpx.AsyncClient(follow_redirects=False, timeout=5) as client:
+            # Canary request: detect servers that return 200 for everything
+            canary = await _get_canary_fingerprint(client, base)
+
             results = await asyncio.gather(
-                *[_probe(client, base, pid, path, sev, title) for pid, path, sev, title in PROBES],
+                *[_probe(client, base, pid, path, sev, title, canary) for pid, path, sev, title in PROBES],
                 *[_probe_dir_listing(client, base, path) for path in DIR_LISTING_PATHS],
                 _probe_robots_txt(client, base),
                 _probe_security_txt(client, base),

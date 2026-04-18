@@ -3,17 +3,17 @@
 import { useEffect, useState } from "react";
 
 const CHECKS = [
-  { label: "Probing for exposed secret files",  delay: 0     },
-  { label: "Checking SSL certificate",           delay: 1200  },
-  { label: "Scanning for open ports",            delay: 2500  },
-  { label: "Inspecting admin panels",            delay: 4000  },
-  { label: "Analysing HTTP security headers",    delay: 5500  },
-  { label: "Checking DNS & email records",       delay: 7000  },
-  { label: "Inspecting cookies",                 delay: 8500  },
-  { label: "Testing CORS policy",                delay: 10000 },
-  { label: "Scanning subdomains",                delay: 12000 },
-  { label: "Checking for data breaches",         delay: 14000 },
-  { label: "Scanning GitHub workflows",          delay: 16000 },
+  { label: "Probing for exposed secret files",  delay: 600   },
+  { label: "Checking SSL certificate",           delay: 1800  },
+  { label: "Scanning for open ports",            delay: 3200  },
+  { label: "Inspecting admin panels",            delay: 4600  },
+  { label: "Analysing HTTP security headers",    delay: 6000  },
+  { label: "Checking DNS & email records",       delay: 7200  },
+  { label: "Inspecting cookies",                 delay: 8400  },
+  { label: "Testing CORS policy",                delay: 9600  },
+  { label: "Scanning subdomains",                delay: 11000 },
+  { label: "Checking for data breaches",         delay: 12400 },
+  { label: "Scanning GitHub workflows",          delay: 13800 },
 ];
 
 export default function LoadingState({ fixedMessage }: { fixedMessage?: string }) {
@@ -31,41 +31,64 @@ export default function LoadingState({ fixedMessage }: { fixedMessage?: string }
     return () => timers.forEach(clearTimeout);
   }, [fixedMessage]);
 
+  const total = CHECKS.length;
+  const completedCount = done.size;
+  const percentage = Math.round((completedCount / total) * 100);
+  const allDone = completedCount === total;
+
+  const activeIndex = allDone ? -1 : completedCount;
+
   return (
-    <div className="w-full max-w-xs mx-auto py-12 space-y-2.5">
-      {CHECKS.map((c, i) => {
-        const isDone = done.has(i);
-        const isNext = !isDone && done.size === i;
-        return (
+    <div className="w-full max-w-lg mx-auto py-12 font-mono">
+      {/* Header line */}
+      {!fixedMessage && (
+        <p className="text-sm text-white mb-3">&gt; Running security scan...</p>
+      )}
+
+      {/* Progress bar — 1px tall, scanning phase only */}
+      {!fixedMessage && (
+        <div className="h-px w-full bg-zinc-800 mb-6 overflow-hidden">
           <div
-            key={i}
-            className={`flex items-center gap-3 transition-opacity duration-300 ${
-              isDone || isNext ? "opacity-100" : "opacity-25"
-            }`}
-          >
-            <span className={`w-5 h-5 flex-shrink-0 flex items-center justify-center rounded-full text-xs font-bold transition-all duration-300 ${
-              isDone
-                ? "bg-green-900 text-green-400"
-                : isNext
-                ? "bg-gray-800 text-blue-400 animate-pulse"
-                : "bg-gray-800 text-gray-600"
-            }`}>
-              {isDone ? "✓" : "○"}
-            </span>
-            <span className={`text-sm transition-colors duration-300 ${
-              isDone
-                ? "text-gray-500 line-through decoration-gray-600"
-                : isNext
-                ? "text-white font-medium"
-                : "text-gray-600"
-            }`}>
-              {c.label}
-            </span>
-          </div>
-        );
-      })}
+            className="h-full bg-white transition-all duration-500 ease-out"
+            style={{ width: `${percentage}%` }}
+          />
+        </div>
+      )}
+
+      {/* Checklist */}
+      <div className="space-y-1">
+        {CHECKS.map((c, i) => {
+          const isDone = done.has(i);
+          const isActive = i === activeIndex;
+          const isPending = !isDone && !isActive;
+
+          return (
+            <div key={i} className="text-sm leading-relaxed">
+              {isDone ? (
+                <span className="text-zinc-600">
+                  <span className="text-zinc-500">[done]</span> {c.label}
+                </span>
+              ) : isActive ? (
+                <span className="text-white">
+                  <span className="animate-pulse">[....]</span> {c.label}
+                </span>
+              ) : (
+                <span className="text-zinc-800">
+                  [{"    "}] {c.label}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Analysis phase */}
       {fixedMessage && (
-        <p className="text-center text-sm text-indigo-400 pt-4 animate-pulse">{fixedMessage}</p>
+        <div className="mt-8">
+          <p className="text-sm text-white">
+            &gt; Analyzing results... <span className="cursor-blink">_</span>
+          </p>
+        </div>
       )}
     </div>
   );

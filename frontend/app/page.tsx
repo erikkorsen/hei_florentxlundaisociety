@@ -20,8 +20,13 @@ export default function Home() {
   async function handleScan(url: string, githubUrl?: string) {
     setState({ status: "scanning", url });
     let scan: ScanResponse;
+    const minScanTime = new Promise(r => setTimeout(r, 15000));
     try {
-      scan = await runScan({ url, github_url: githubUrl });
+      const [result] = await Promise.all([
+        runScan({ url, github_url: githubUrl }),
+        minScanTime,
+      ]);
+      scan = result;
     } catch (err) {
       setState({
         status: "error",
@@ -53,32 +58,33 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white px-4 py-16">
-      <div className="max-w-3xl mx-auto">
-        {(state.status === "idle" || state.status === "error") && (
-          <div className="mb-10 text-center">
-            <h1 className="text-3xl font-bold tracking-tight mb-2">Security Scanner</h1>
-            <p className="text-gray-400 text-sm">
-              Find exposed files, open ports, and misconfigurations before attackers do.
-            </p>
+    <main className="min-h-screen bg-black text-white px-4">
+      {(state.status === "idle" || state.status === "error") && (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="w-full max-w-lg">
+            <div className="mb-12 text-center">
+              <h1 className="text-4xl font-bold tracking-[0.25em] uppercase mb-4">Palisade</h1>
+              <p className="text-zinc-500 text-sm max-w-sm mx-auto leading-relaxed">
+                Scan any website for exposed files, open ports, misconfigurations, and weak points.
+              </p>
+            </div>
+
+            {state.status === "error" && (
+              <p className="mb-5 text-sm text-red-400 font-mono">
+                &gt; Scan failed: {state.message}
+              </p>
+            )}
+
+            <ScanForm
+              onSubmit={handleScan}
+              isLoading={false}
+              initialUrl={state.status === "error" ? state.url : ""}
+            />
           </div>
-        )}
+        </div>
+      )}
 
-        {state.status === "error" && (
-          <div className="mb-6 rounded-lg bg-red-950 border border-red-800 px-4 py-3 text-sm text-red-300">
-            <span className="font-semibold">Scan failed: </span>
-            {state.message}
-          </div>
-        )}
-
-        {(state.status === "idle" || state.status === "error") && (
-          <ScanForm
-            onSubmit={handleScan}
-            isLoading={false}
-            initialUrl={state.status === "error" ? state.url : ""}
-          />
-        )}
-
+      <div className="max-w-3xl mx-auto py-16">
         {state.status === "scanning" && <LoadingState />}
 
         {state.status === "analysing" && (

@@ -186,21 +186,21 @@ Your task:
 Return ONLY valid JSON:
 {{
   "summary": "3-5 sentences. What is the actual security posture of this site? Which findings are real concerns vs scanner noise? Be specific and honest — if the site looks well-maintained, say so. If there are genuine risks, be clear about what they are.",
-  "priority_actions": ["[Quick fix] action", "[Moderate] action", "[Major] action"],
+  "priority_actions": ["Fix X — because Y", "Fix A — because B", "Fix C — because D"],
   "groups": [
     {{
       "id": "<same id from input>",
       "title": "<specific, accurate title for this finding>",
       "description": "<what this actually means for this site — reference the specific affected URLs/ports/headers. If it's likely not a real issue, explain why concretely>",
       "likely_false_positive": true or false,
-      "plain_english": "<one sentence a non-technical person can understand. Use analogies to physical security when helpful.>",
+      "plain_english": "<2-3 sentences explaining this problem to someone with zero technical knowledge. What is actually happening, in normal words? Use physical-world analogies when they help — like doors, locks, windows, mail. Do not use any technical terms without immediately explaining them.>",
       "business_impact": "<one sentence: what could realistically happen if this isn't addressed? Say 'Low risk — no action needed' if it's genuinely not a concern.>"
     }}
   ]
 }}
 
 Rules:
-- "priority_actions": exactly 3 items. Each starts with [Quick fix], [Moderate], or [Major]. If fewer than 3 real issues, use "[Quick fix] No further action needed."
+- "priority_actions": exactly 3 items, ordered by risk (most dangerous first). Each one should name the specific problem and explain why it matters. No effort labels. If fewer than 3 real issues, use "No further action needed."
 - Every group from input must appear in output with the same id
 - Be specific — reference actual URLs, ports, headers from the data. Don't be generic.
 - JSON only. No markdown fences, no text outside the JSON."""

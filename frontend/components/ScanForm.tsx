@@ -28,6 +28,7 @@ export default function ScanForm({ onSubmit, isLoading, initialUrl = "" }: ScanF
   const [url, setUrl] = useState(initialUrl);
   const [githubUrl, setGithubUrl] = useState("");
   const [urlError, setUrlError] = useState("");
+  const [showGithub, setShowGithub] = useState(false);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,11 +42,8 @@ export default function ScanForm({ onSubmit, isLoading, initialUrl = "" }: ScanF
   }
 
   return (
-    <form onSubmit={handleSubmit} className="w-full max-w-2xl mx-auto space-y-4">
-      <div className="space-y-1">
-        <label htmlFor="url" className="block text-sm font-medium text-gray-300">
-          Target URL <span className="text-red-400">*</span>
-        </label>
+    <form onSubmit={handleSubmit} className="w-full space-y-6">
+      <div className="space-y-1.5">
         <input
           id="url"
           type="text"
@@ -54,37 +52,50 @@ export default function ScanForm({ onSubmit, isLoading, initialUrl = "" }: ScanF
             setUrl(e.target.value);
             if (urlError) setUrlError("");
           }}
-          placeholder="example.com"
+          placeholder="Enter a website URL"
           disabled={isLoading}
-          className={`w-full px-4 py-3 rounded-lg bg-gray-800 border text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition disabled:opacity-50 ${
-            urlError ? "border-red-500" : "border-gray-600"
+          className={`w-full px-0 py-3 bg-transparent border-b text-white placeholder-zinc-700 focus:outline-none transition disabled:opacity-50 ${
+            urlError ? "border-b-red-700" : "border-b-zinc-700 focus:border-b-white"
           }`}
         />
-        {urlError && <p className="text-sm text-red-400">{urlError}</p>}
+        {urlError && <p className="text-xs text-red-400 font-mono">&gt; {urlError}</p>}
       </div>
 
-      <div className="space-y-1">
-        <label htmlFor="github" className="block text-sm font-medium text-gray-300">
-          GitHub Repository{" "}
-          <span className="text-gray-500 font-normal">(optional)</span>
-        </label>
-        <input
-          id="github"
-          type="text"
-          value={githubUrl}
-          onChange={(e) => setGithubUrl(e.target.value)}
-          placeholder="https://github.com/owner/repo"
-          disabled={isLoading}
-          className="w-full px-4 py-3 rounded-lg bg-gray-800 border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition disabled:opacity-50"
-        />
-      </div>
+      {showGithub ? (
+        <div className="space-y-2">
+          <input
+            id="github"
+            type="text"
+            value={githubUrl}
+            onChange={(e) => setGithubUrl(e.target.value)}
+            placeholder="https://github.com/owner/repo"
+            disabled={isLoading}
+            className="w-full px-0 py-2.5 bg-transparent border-b border-b-zinc-700 focus:border-b-white text-white placeholder-zinc-700 focus:outline-none transition disabled:opacity-50 text-sm"
+          />
+          <button
+            type="button"
+            onClick={() => { setShowGithub(false); setGithubUrl(""); }}
+            className="text-xs text-zinc-700 hover:text-zinc-400 transition"
+          >
+            - Remove GitHub repo
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowGithub(true)}
+          className="text-xs text-zinc-700 hover:text-zinc-400 transition"
+        >
+          + Add GitHub repo
+        </button>
+      )}
 
       <button
         type="submit"
         disabled={isLoading || !url}
-        className="w-full py-3 px-6 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold transition"
+        className="w-full bg-white text-black font-semibold disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed px-8 py-3.5 text-sm tracking-wider uppercase transition"
       >
-        {isLoading ? "Scanning…" : "Scan for vulnerabilities"}
+        Start scan
       </button>
     </form>
   );
