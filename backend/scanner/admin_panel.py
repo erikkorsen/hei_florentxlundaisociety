@@ -10,6 +10,14 @@ PROBES = [
     ("admin_panel_phpmyadmin", "/phpmyadmin", Severity.HIGH, "phpMyAdmin exposed"),
     ("admin_panel_adminer", "/adminer.php", Severity.CRITICAL, "Adminer database UI exposed"),
     ("admin_panel_administrator", "/administrator", Severity.HIGH, "Administrator panel exposed"),
+    ("admin_panel_login", "/login", Severity.MEDIUM, "Login page exposed"),
+    ("admin_panel_signin", "/signin", Severity.MEDIUM, "Sign-in page exposed"),
+    ("admin_panel_cpanel", "/cpanel", Severity.HIGH, "cPanel control panel exposed"),
+    ("admin_panel_webmail", "/webmail", Severity.HIGH, "Webmail interface exposed"),
+    ("admin_panel_grafana", "/grafana", Severity.HIGH, "Grafana dashboard exposed"),
+    ("admin_panel_jenkins", "/jenkins", Severity.HIGH, "Jenkins CI exposed"),
+    ("admin_panel_kibana", "/kibana", Severity.HIGH, "Kibana dashboard exposed"),
+    ("admin_panel_wp_login", "/wp-login.php", Severity.HIGH, "WordPress login page exposed"),
 ]
 
 DESCRIPTION = "This panel is accessible from the internet. Ensure only authorized users have credentials, and consider restricting access by IP."

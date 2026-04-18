@@ -3,7 +3,7 @@ import time
 from urllib.parse import urlparse
 
 from models import Finding, Severity, Category, ScanRequest, ScanResponse
-from scanner import secrets_scanner, ssl_checker, port_scanner, admin_panel, headers_scanner, dns_scanner, github_scanner, cookie_scanner, cors_scanner
+from scanner import secrets_scanner, ssl_checker, port_scanner, admin_panel, headers_scanner, dns_scanner, github_scanner, cookie_scanner, cors_scanner, subdomain_scanner, breach_scanner
 
 SEVERITY_ORDER = {Severity.CRITICAL: 0, Severity.HIGH: 1, Severity.MEDIUM: 2, Severity.PASS: 3}
 
@@ -22,6 +22,8 @@ async def run_scan(request: ScanRequest) -> ScanResponse:
         dns_scanner.scan(request.url),
         cookie_scanner.scan(request.url),
         cors_scanner.scan(request.url),
+        subdomain_scanner.scan(request.url),
+        breach_scanner.scan(request.url),
     ]
 
     if request.github_url:

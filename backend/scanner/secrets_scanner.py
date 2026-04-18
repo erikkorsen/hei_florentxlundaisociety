@@ -7,6 +7,58 @@ from models import Finding, Severity, Category
 
 ROBOTS_SENSITIVE = re.compile(r"(admin|backup|config|internal|api|secret|private)", re.IGNORECASE)
 
+CREDENTIAL_PATTERNS = re.compile(
+    r"(PASSWORD|SECRET|API_KEY|APIKEY|TOKEN|DATABASE_URL|DB_PASS|AWS_SECRET|PRIVATE_KEY)\s*[=:]",
+    re.IGNORECASE,
+)
+
+
+def _analyze_content(path: str, body: str) -> str:
+    """Analyze exposed file content and return extra context for the description."""
+    if not body:
+        return ""
+
+    size_kb = len(body) / 1024
+
+    if ".env" in path:
+        cred_lines = CREDENTIAL_PATTERNS.findall(body)
+        if cred_lines:
+            return f" Contains {len(cred_lines)} credential-like variable(s) ({', '.join(set(cred_lines)[:5])}). Rotate immediately."
+        return f" File is {size_kb:.1f}KB. Inspect for secrets."
+
+    if ".git/config" in path:
+        urls = re.findall(r"url\s*=\s*(.+)", body)
+        if urls:
+            return f" Exposes git remote(s): {', '.join(u.strip() for u in urls[:3])}."
+        return " Git config exposed — may reveal repo structure."
+
+    if path.endswith(".sql") or "backup" in path.lower():
+        tables = re.findall(r"CREATE TABLE\s+[`\"']?(\w+)", body, re.IGNORECASE)
+        if tables:
+            return f" SQL dump ({size_kb:.0f}KB) with tables: {', '.join(tables[:5])}. Likely contains real user data."
+        return f" File is {size_kb:.0f}KB. May be a database dump."
+
+    if "phpinfo" in path:
+        version_match = re.search(r"PHP Version\s*</td><td[^>]*>([^<]+)", body)
+        if version_match:
+            return f" PHP version: {version_match.group(1)}. Full server configuration exposed."
+        return " Full PHP configuration and server environment exposed."
+
+    if "actuator/env" in path:
+        try:
+            import json
+            data = json.loads(body)
+            prop_count = sum(len(v.get("properties", {})) for v in data.get("propertySources", []))
+            return f" Spring Boot actuator exposes {prop_count} configuration properties including potential secrets."
+        except Exception:
+            pass
+        return " Spring Boot environment variables exposed."
+
+    if size_kb > 10:
+        return f" Response is {size_kb:.0f}KB — likely contains substantial data."
+
+    return ""
+
 PROBES = [
     ("secrets_env", "/.env", Severity.CRITICAL, ".env file publicly accessible"),
     ("secrets_env_local", "/.env.local", Severity.CRITICAL, ".env.local file publicly accessible"),
@@ -43,11 +95,12 @@ async def _probe(client: httpx.AsyncClient, base: str, probe_id: str, path: str,
         resp = await client.get(url)
 
         if resp.status_code == 200:
+            extra = _analyze_content(path, resp.text[:10000])
             return Finding(
                 id=probe_id,
                 severity=severity,
                 title=title,
-                description=f"The file {path} responded with HTTP 200 at {url}. It may contain sensitive data.",
+                description=f"The file {path} responded with HTTP 200 at {url}. It may contain sensitive data.{extra}",
                 affected=url,
                 fix=FIX_TEXT,
                 category=Category.SECRETS,

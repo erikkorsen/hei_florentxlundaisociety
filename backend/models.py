@@ -20,6 +20,8 @@ class Category(str, Enum):
     DNS = "dns"
     COOKIES = "cookies"
     CORS = "cors"
+    SUBDOMAINS = "subdomains"
+    BREACH = "breach"
 
 
 class Finding(BaseModel):

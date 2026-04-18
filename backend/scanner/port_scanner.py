@@ -10,9 +10,15 @@ PORTS = [
     (3306, "MySQL", Severity.CRITICAL, "port_3306_open", "MySQL database port open"),
     (5432, "PostgreSQL", Severity.CRITICAL, "port_5432_open", "PostgreSQL database port open"),
     (27017, "MongoDB", Severity.CRITICAL, "port_27017_open", "MongoDB port open"),
+    (9200, "Elasticsearch", Severity.CRITICAL, "port_9200_open", "Elasticsearch port open"),
     (22, "SSH", Severity.HIGH, "port_22_open", "SSH port open to the internet"),
     (21, "FTP", Severity.HIGH, "port_21_open", "FTP port open (unencrypted)"),
     (3389, "RDP", Severity.HIGH, "port_3389_open", "Remote Desktop port open"),
+    (11211, "Memcached", Severity.HIGH, "port_11211_open", "Memcached port open"),
+    (5672, "RabbitMQ", Severity.HIGH, "port_5672_open", "RabbitMQ message broker open"),
+    (9090, "Prometheus", Severity.HIGH, "port_9090_open", "Prometheus metrics endpoint open"),
+    (8080, "HTTP Proxy", Severity.MEDIUM, "port_8080_open", "HTTP alternate/proxy port open"),
+    (8443, "HTTPS Alt", Severity.MEDIUM, "port_8443_open", "HTTPS alternate port open"),
 ]
 
 
@@ -53,18 +59,25 @@ async def _check_port(
     except (ConnectionRefusedError, TimeoutError, OSError, asyncio.TimeoutError):
         return None
 
-    # Port is open — run special probes
+    # Port is open — run special probes and banner grab
     description = f"Port {port} ({service}) is open on {host}."
 
     if port == 6379:
         extra = await _probe_redis(host)
         if extra:
             description += f" {extra}"
-
-    if port == 2375:
+    elif port == 2375:
         extra = await _probe_docker(host)
         if extra:
             description += f" {extra}"
+    elif port == 9200:
+        extra = await _probe_elasticsearch(host)
+        if extra:
+            description += f" {extra}"
+    else:
+        banner = await _grab_banner(host, port)
+        if banner:
+            description += f" Banner: {banner}"
 
     return Finding(
         id=finding_id,
@@ -93,6 +106,53 @@ async def _probe_redis(host: str) -> str:
             return "No authentication required — anyone can read and write your Redis data."
         if "-NOAUTH" in response or "-ERR" in response:
             return "Password required — verify it's strong."
+    except Exception:
+        pass
+    return ""
+
+
+async def _grab_banner(host: str, port: int) -> str:
+    """Try to read a service banner from an open port."""
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, port),
+            timeout=2,
+        )
+        # Some services send a banner immediately; others need a nudge
+        try:
+            data = await asyncio.wait_for(reader.read(256), timeout=2)
+        except asyncio.TimeoutError:
+            # Try sending a basic HTTP request for HTTP-like ports
+            if port in (8080, 8443, 9090):
+                writer.write(b"HEAD / HTTP/1.0\r\nHost: " + host.encode() + b"\r\n\r\n")
+                await writer.drain()
+                try:
+                    data = await asyncio.wait_for(reader.read(256), timeout=2)
+                except asyncio.TimeoutError:
+                    data = b""
+            else:
+                data = b""
+        writer.close()
+        await writer.wait_closed()
+        banner = data.decode(errors="ignore").strip()
+        # Clean up — take just the first line, cap length
+        first_line = banner.split("\n")[0].strip()[:100]
+        if first_line and any(c.isalpha() for c in first_line):
+            return first_line
+    except Exception:
+        pass
+    return ""
+
+
+async def _probe_elasticsearch(host: str) -> str:
+    try:
+        async with httpx.AsyncClient(timeout=3) as client:
+            resp = await client.get(f"http://{host}:9200/")
+            if resp.status_code == 200:
+                data = resp.json()
+                cluster = data.get("cluster_name", "unknown")
+                version = data.get("version", {}).get("number", "unknown")
+                return f"Unauthenticated Elasticsearch cluster '{cluster}' (v{version}). Anyone can read, modify, or delete all indices."
     except Exception:
         pass
     return ""

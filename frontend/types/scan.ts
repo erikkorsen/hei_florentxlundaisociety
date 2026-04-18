@@ -1,5 +1,5 @@
 export type Severity = "CRITICAL" | "HIGH" | "MEDIUM" | "PASS";
-export type Category = "secrets" | "ports" | "ssl" | "admin" | "firewall" | "github" | "headers" | "dns" | "cookies" | "cors";
+export type Category = "secrets" | "ports" | "ssl" | "admin" | "firewall" | "github" | "headers" | "dns" | "cookies" | "cors" | "subdomains" | "breach";
 
 export interface Finding {
   id: string;
