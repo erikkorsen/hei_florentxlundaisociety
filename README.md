@@ -115,30 +115,20 @@ pip install -r requirements.txt
 # Add your API key (optional but recommended)
 echo "ANTHROPIC_API_KEY=your_key_here" > .env
 
-uvicorn main:app --reload --port 8000
-```
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
+python run.py
 ```
 
 Open [http://localhost:3000](http://localhost:3000) and paste any URL to scan.
 
 ### Demo targets (optional)
 
-Two local demo websites are included for testing:
+A local demo websites are included for testing:
 
 ```bash
 # Vulnerable SaaS site — triggers findings across all categories
 python demo_target/novadash.py      # http://localhost:8081
 
-# Clean corporate site — passes most checks
-python demo_target/meridian.py      # http://localhost:8082
-```
+
 
 ---
 
@@ -159,7 +149,6 @@ Scaling further is straightforward:
 The architecture (stateless FastAPI + asyncio scanner modules) is designed to make adding new checks trivial — each scanner is an independent `async def scan() -> list[Finding]` function.
 
 ---
-
 
 
 Built by HEI at **Florent x Lunda i Society** 
