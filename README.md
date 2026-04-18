@@ -1,26 +1,22 @@
 # SecureCheck — AI-Powered Security Scanner for Vibe Coders
 
-> *"You shipped fast. Now make sure it's safe."*
 
----
 
 ## Problem Statement
 
-A new generation of developers — vibe coders — are building and shipping real products faster than ever, powered by AI tools and no-code platforms. That's genuinely exciting. But speed comes with a blind spot: **security**.
+vibe coders are building and shipping real products without knowing what they are leaving to the public. This means they often miss things regarding safety, leaving secrets out.
 
-Most vibe-coded projects skip the basics. `.env` files get committed to GitHub. Admin panels are left open to the internet. Databases listen on public ports with no authentication. SSL is misconfigured or missing entirely. These aren't rare edge cases — they're the default when security isn't front of mind.
+Most vibe-coded projects skip the basics. `.env` files get committed to GitHub. Admin panels are left open to the internet. Databases listen on public ports with no authentication. SSL is misconfigured or missing entirely. These aren't rare edge cases, they're the default when security isn't front of mind.
 
-Traditional security tools are built for security engineers. They produce long CVE reports full of jargon that means nothing to someone who just wants to ship their SaaS. The result? The report gets ignored, the vulnerability stays, and one day something bad happens.
 
----
 
 ## Solution
 
-SecureCheck is a security scanner built specifically for developers who don't have a security background. You paste in your URL, press scan, and within 30 seconds you get a clear, prioritised list of security issues — explained in plain English.
+Palisade is a security scanner built specifically for developers who don't have a security background. You paste in your URL, press scan, and within 30 seconds you get a clear, prioritised list of security issues explained in plain English.
 
-No CVE numbers. No 40-page PDF. Just: *"Your Redis database is open to the internet with no password. Anyone can read and delete your data. Here's how to fix it."*
+i.e: *"Your Redis database is open to the internet with no password. Anyone can read and delete your data. Here's how to fix it."*
 
-The AI layer (powered by Claude) acts as a translator between raw scanner output and actionable human language. It understands the context of your site — is it a small startup, a large enterprise, a dev environment? — and adjusts the severity and explanation accordingly. It also filters out false positives so you're not chasing ghosts.
+The AI layer (powered by Claude) acts as a translator between raw scanner output and actionable human language. It understands the context of your site — is it a small startup, a large enterprise, a dev environment? and adjusts the severity and explanation accordingly. It also filters out false positives so you're not chasing ghosts.
 
 ---
 
@@ -101,24 +97,6 @@ This means a non-technical founder reads: *"3 of your session cookies don't have
 
 ---
 
-## Current Scope & How to Scale
-
-This demo focuses on **external scanning** — you provide a URL and we probe it from the outside, the same way an attacker would. No credentials, no code access, no installation on the target.
-
-The **GitHub scanner** already supports repo analysis: paste a GitHub URL alongside your site URL and we'll scan your workflows for hardcoded secrets and vulnerable dependencies.
-
-Scaling further is straightforward:
-
-- **Deeper repo scanning** — scan all source files for secrets, not just workflows
-- **Authenticated scans** — provide a session cookie to scan behind login
-- **CI/CD integration** — run as a GitHub Action on every pull request
-- **Continuous monitoring** — schedule weekly scans and alert on regressions
-- **Internal scanning** — run the backend inside a private network to scan internal services
-
-The architecture (stateless FastAPI + asyncio scanner modules) is designed to make adding new checks trivial — each scanner is an independent `async def scan() -> list[Finding]` function.
-
----
-
 ## How to Run
 
 ### Prerequisites
@@ -164,6 +142,24 @@ python demo_target/meridian.py      # http://localhost:8082
 
 ---
 
-## Team
+## Current Scope & How to Scale
 
-Built at HEI by **Florent x Lunda i Society** 🚀
+This demo focuses on **external scanning** — you provide a URL and we probe it from the outside, the same way an attacker would. No credentials, no code access, no installation on the target.
+
+The **GitHub scanner** already supports repo analysis: paste a GitHub URL alongside your site URL and we'll scan your workflows for hardcoded secrets and vulnerable dependencies.
+
+Scaling further is straightforward:
+
+- **Deeper repo scanning** — scan all source files for secrets, not just workflows
+- **Authenticated scans** — provide a session cookie to scan behind login
+- **CI/CD integration** — run as a GitHub Action on every pull request
+- **Continuous monitoring** — schedule weekly scans and alert on regressions
+- **Internal scanning** — run the backend inside a private network to scan internal services
+
+The architecture (stateless FastAPI + asyncio scanner modules) is designed to make adding new checks trivial — each scanner is an independent `async def scan() -> list[Finding]` function.
+
+---
+
+
+
+Built by HEI at **Florent x Lunda i Society** 
