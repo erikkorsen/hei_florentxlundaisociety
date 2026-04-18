@@ -18,7 +18,19 @@ A web app that accepts a target URL (and optionally a GitHub repo URL) and retur
 | GitHub scanning | GitHub raw content URLs + REST API (unauthenticated) | Works for public repos without a token |
 
 ---
+  /btw what could others work on right now in their branch without this                                                                           
+                                                                                                                                                  
+    - frontend/lib/api.ts — fetch wrapper for POST /api/scan                                                                                      
+    - frontend/components/ScanForm.tsx — URL inputs + submit button     
+    - frontend/components/LoadingState.tsx — spinner + cycling messages                                                                           
+    - frontend/components/FindingCard.tsx — severity-coded card
+    - frontend/components/ScanResults.tsx — summary bar + card list                                                                               
+    - frontend/app/page.tsx — state machine (idle | scanning | results | error)
+                                                                                                                                                  
+    They can test with mock data until the backend is running. The API contract in docs/ARCHITECTURE.md has the exact response shape.
 
+    ---
+    TL;DR: Everyone can start now. Models are done, the API contract is in the docs, and the frontend is fully independent.
 ## Directory Structure
 
 ```
