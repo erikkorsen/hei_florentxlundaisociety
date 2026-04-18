@@ -8,9 +8,16 @@ interface ScanFormProps {
   initialUrl?: string;
 }
 
+function normalizeUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+  return "https://" + trimmed;
+}
+
 function isValidUrl(value: string): boolean {
   try {
-    const u = new URL(value);
+    const u = new URL(normalizeUrl(value));
     return u.protocol === "http:" || u.protocol === "https:";
   } catch {
     return false;
@@ -24,12 +31,13 @@ export default function ScanForm({ onSubmit, isLoading, initialUrl = "" }: ScanF
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!isValidUrl(url)) {
-      setUrlError("Enter a valid URL starting with http:// or https://");
+    const normalized = normalizeUrl(url);
+    if (!isValidUrl(normalized)) {
+      setUrlError("Enter a valid URL (e.g. example.com or https://example.com)");
       return;
     }
     setUrlError("");
-    onSubmit(url.trim(), githubUrl.trim() || undefined);
+    onSubmit(normalized, githubUrl.trim() || undefined);
   }
 
   return (
@@ -46,7 +54,7 @@ export default function ScanForm({ onSubmit, isLoading, initialUrl = "" }: ScanF
             setUrl(e.target.value);
             if (urlError) setUrlError("");
           }}
-          placeholder="https://example.com"
+          placeholder="example.com"
           disabled={isLoading}
           className={`w-full px-4 py-3 rounded-lg bg-gray-800 border text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition disabled:opacity-50 ${
             urlError ? "border-red-500" : "border-gray-600"

@@ -71,7 +71,7 @@ async def _enrich_with_ai(
     target_url: str,
     groups: list[GroupedFinding],
 ) -> tuple[str | None, list[str], list[GroupedFinding]]:
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTROPHIC_API_KEY")
     if not api_key or not groups:
         return None, [], groups
 

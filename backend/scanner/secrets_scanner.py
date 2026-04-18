@@ -4,6 +4,7 @@ import re
 import httpx
 
 from models import Finding, Severity, Category
+from scanner.llm_content_analyzer import analyze_exposed_file
 
 ROBOTS_SENSITIVE = re.compile(r"(admin|backup|config|internal|api|secret|private)", re.IGNORECASE)
 
@@ -95,12 +96,15 @@ async def _probe(client: httpx.AsyncClient, base: str, probe_id: str, path: str,
         resp = await client.get(url)
 
         if resp.status_code == 200:
-            extra = _analyze_content(path, resp.text[:10000])
+            body = resp.text[:10000]
+            regex_extra = _analyze_content(path, body)
+            llm_extra = await analyze_exposed_file(path, body)
+            extra = llm_extra if llm_extra else regex_extra
             return Finding(
                 id=probe_id,
                 severity=severity,
                 title=title,
-                description=f"The file {path} responded with HTTP 200 at {url}. It may contain sensitive data.{extra}",
+                description=f"The file {path} is publicly accessible at {url}.{extra}",
                 affected=url,
                 fix=FIX_TEXT,
                 category=Category.SECRETS,

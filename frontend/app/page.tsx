@@ -54,7 +54,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white px-4 py-16">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-3xl mx-auto">
         {(state.status === "idle" || state.status === "error") && (
           <div className="mb-10 text-center">
             <h1 className="text-3xl font-bold tracking-tight mb-2">Security Scanner</h1>
