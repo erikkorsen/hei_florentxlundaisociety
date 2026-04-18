@@ -19,6 +19,74 @@ async def _resolve_txt(domain: str) -> list[str]:
         return []
 
 
+async def _check_dkim(domain: str, loop: asyncio.AbstractEventLoop) -> Finding:
+    """Check common DKIM selectors. Returns PASS if any found, MEDIUM if none."""
+    selectors = ["default", "google", "mail", "dkim"]
+    for selector in selectors:
+        try:
+            answers = await loop.run_in_executor(
+                None,
+                lambda s=selector: dns.resolver.resolve(f"{s}._domainkey.{domain}", "TXT", lifetime=5),
+            )
+            for rdata in answers:
+                if "v=DKIM1" in rdata.to_text():
+                    return Finding(
+                        id="dns_dkim_present",
+                        severity=Severity.PASS,
+                        title="DKIM record present",
+                        description=f"DKIM record found for {domain} (selector: {selector}).",
+                        affected=f"{selector}._domainkey.{domain}",
+                        fix="No action needed.",
+                        category=Category.DNS,
+                    )
+        except (dns.exception.DNSException, OSError):
+            pass
+
+    return Finding(
+        id="dns_no_dkim",
+        severity=Severity.MEDIUM,
+        title="No DKIM record found on common selectors",
+        description=(
+            f"No DKIM record was found for {domain} under common selectors (default, google, mail, dkim). "
+            "DKIM adds a cryptographic signature to outbound emails, helping receiving servers verify authenticity. "
+            "Note: your provider may use a non-standard selector not checked here."
+        ),
+        affected=domain,
+        fix="Enable DKIM signing in your email provider and publish the TXT record they provide at `<selector>._domainkey." + domain + "`.",
+        category=Category.DNS,
+    )
+
+
+async def _check_caa(domain: str, loop: asyncio.AbstractEventLoop) -> Finding:
+    """Check for CAA records. Returns PASS if present, MEDIUM if absent."""
+    try:
+        await loop.run_in_executor(
+            None, lambda: dns.resolver.resolve(domain, "CAA", lifetime=5)
+        )
+        return Finding(
+            id="dns_caa_present",
+            severity=Severity.PASS,
+            title="CAA record present",
+            description=f"CAA (Certification Authority Authorization) record found for {domain}, restricting which CAs can issue certificates.",
+            affected=domain,
+            fix="No action needed.",
+            category=Category.DNS,
+        )
+    except (dns.exception.DNSException, OSError):
+        return Finding(
+            id="dns_no_caa",
+            severity=Severity.MEDIUM,
+            title="No CAA record — any CA can issue certificates",
+            description=(
+                f"{domain} has no CAA record. Without CAA, any trusted Certificate Authority can issue an SSL certificate "
+                "for your domain, increasing the risk of mis-issuance or fraudulent certificates."
+            ),
+            affected=domain,
+            fix="Add a CAA record to your DNS restricting issuance to your CA, e.g., `0 issue \"letsencrypt.org\"` or `0 issue \"digicert.com\"`.",
+            category=Category.DNS,
+        )
+
+
 async def scan(host_url: str) -> list[Finding]:
     parsed = urlparse(host_url)
     domain = parsed.hostname or ""
@@ -35,6 +103,7 @@ async def scan(host_url: str) -> list[Finding]:
             category=Category.DNS,
         )]
 
+    loop = asyncio.get_event_loop()
     findings: list[Finding] = []
 
     # --- SPF ---
@@ -98,6 +167,14 @@ async def scan(host_url: str) -> list[Finding]:
             fix="No action needed.",
             category=Category.DNS,
         ))
+
+    # --- DKIM and CAA (run concurrently) ---
+    dkim_finding, caa_finding = await asyncio.gather(
+        _check_dkim(domain, loop),
+        _check_caa(domain, loop),
+    )
+    findings.append(dkim_finding)
+    findings.append(caa_finding)
 
     return findings
 

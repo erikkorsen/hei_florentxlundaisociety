@@ -1,3 +1,4 @@
+import re
 from urllib.parse import urlparse
 
 import httpx
@@ -33,6 +34,20 @@ HEADER_CHECKS = [
         "No Content-Security-Policy header is set. Without CSP, injected scripts can execute freely in users' browsers.",
         "Add a Content-Security-Policy header. Start with `default-src 'self'` and expand as needed.",
     ),
+    (
+        "referrer-policy",
+        "headers_no_referrer_policy",
+        "Referrer-Policy missing",
+        "No Referrer-Policy header is set. Browsers may send the full URL of your pages as a Referer header to third-party sites, leaking sensitive path information.",
+        "Add `Referrer-Policy: strict-origin-when-cross-origin` to your server responses.",
+    ),
+    (
+        "permissions-policy",
+        "headers_no_permissions_policy",
+        "Permissions-Policy missing",
+        "No Permissions-Policy header is set. Without it, embedded third-party scripts may access sensitive browser features (camera, microphone, geolocation) without restriction.",
+        "Add `Permissions-Policy: geolocation=(), microphone=(), camera=()` to restrict browser feature access.",
+    ),
 ]
 
 
@@ -59,6 +74,32 @@ async def scan(host_url: str) -> list[Finding]:
                         category=Category.HEADERS,
                     ))
 
+            # Information disclosure: Server header with version number
+            server = headers.get("server", "")
+            if re.search(r"/[\d.]+", server):
+                findings.append(Finding(
+                    id="headers_server_version",
+                    severity=Severity.MEDIUM,
+                    title="Server version disclosed in header",
+                    description=f"The Server header reveals your software version: `{server}`. Attackers use version info to look up known CVEs.",
+                    affected=https_url,
+                    fix="Configure your server to omit or genericize the Server header (nginx: `server_tokens off;`, Apache: `ServerTokens Prod`).",
+                    category=Category.HEADERS,
+                ))
+
+            # Information disclosure: X-Powered-By leaks tech stack
+            powered = headers.get("x-powered-by", "")
+            if powered:
+                findings.append(Finding(
+                    id="headers_x_powered_by",
+                    severity=Severity.MEDIUM,
+                    title="X-Powered-By header leaks technology stack",
+                    description=f"The X-Powered-By header reveals your backend technology: `{powered}`. This helps attackers identify which exploits to target.",
+                    affected=https_url,
+                    fix="Remove the X-Powered-By header. In Express.js: `app.disable('x-powered-by')`. In PHP: set `expose_php = Off` in php.ini.",
+                    category=Category.HEADERS,
+                ))
+
     except httpx.RequestError:
         return []
 
@@ -67,7 +108,7 @@ async def scan(host_url: str) -> list[Finding]:
             id="headers_all_present",
             severity=Severity.PASS,
             title="Security headers in place",
-            description="HSTS, X-Frame-Options, X-Content-Type-Options, and CSP headers are all set.",
+            description="HSTS, X-Frame-Options, X-Content-Type-Options, CSP, Referrer-Policy, and Permissions-Policy headers are all set. No server version disclosure detected.",
             affected=https_url,
             fix="No action needed.",
             category=Category.HEADERS,

@@ -41,6 +41,13 @@ async def scan(host_url: str) -> list[Finding]:
         has_issues = True
         findings.append(redirect_finding)
 
+    # Check 4: Deprecated TLS versions (only if HTTPS is up)
+    if https_ok:
+        tls_findings = await _check_tls_versions(hostname)
+        if tls_findings:
+            has_issues = True
+            findings.extend(tls_findings)
+
     if not has_issues:
         findings.append(Finding(
             id="ssl_valid",
@@ -124,6 +131,50 @@ async def _check_cert_expiry(hostname: str) -> Finding | None:
         return None
     except Exception:
         return None
+
+
+async def _check_tls_versions(hostname: str) -> list[Finding]:
+    if not hasattr(ssl, "TLSVersion"):
+        return []  # Python < 3.7 or OpenSSL without TLS version control
+
+    findings = []
+    for tls_version, version_name in [
+        (ssl.TLSVersion.TLSv1, "TLS 1.0"),
+        (ssl.TLSVersion.TLSv1_1, "TLS 1.1"),
+    ]:
+        try:
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            ctx.maximum_version = tls_version
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+            def _try_connect():
+                with socket.create_connection((hostname, 443), timeout=3) as sock:
+                    with ctx.wrap_socket(sock, server_hostname=hostname):
+                        pass
+
+            await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(None, _try_connect),
+                timeout=5,
+            )
+            ver_id = version_name.lower().replace(" ", "").replace(".", "_")
+            findings.append(Finding(
+                id=f"ssl_{ver_id}_supported",
+                severity=Severity.HIGH,
+                title=f"Deprecated {version_name} protocol accepted",
+                description=(
+                    f"The server accepts {version_name}, which was deprecated by the IETF in 2021. "
+                    "It is vulnerable to known attacks (POODLE, BEAST) and should not be used."
+                ),
+                affected=f"https://{hostname}",
+                fix=f"Disable {version_name} in your server config and require TLS 1.2 or higher (nginx: `ssl_protocols TLSv1.2 TLSv1.3;`).",
+                category=Category.SSL,
+            ))
+        except (ssl.SSLError, OSError, asyncio.TimeoutError):
+            # Server refused the deprecated version, or OpenSSL has it disabled — not a finding
+            pass
+
+    return findings
 
 
 async def _check_redirect(hostname: str) -> Finding | None:

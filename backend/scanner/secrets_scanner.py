@@ -1,8 +1,11 @@
 import asyncio
+import re
 
 import httpx
 
 from models import Finding, Severity, Category
+
+ROBOTS_SENSITIVE = re.compile(r"(admin|backup|config|internal|api|secret|private)", re.IGNORECASE)
 
 PROBES = [
     ("secrets_env", "/.env", Severity.CRITICAL, ".env file publicly accessible"),
@@ -14,6 +17,14 @@ PROBES = [
     ("secrets_backup_sql", "/backup.sql", Severity.CRITICAL, "SQL backup file publicly accessible"),
     ("secrets_db_yml", "/config/database.yml", Severity.CRITICAL, "Database config file exposed"),
     ("secrets_ds_store", "/.DS_Store", Severity.MEDIUM, ".DS_Store file exposed (leaks directory structure)"),
+    ("secrets_web_config", "/web.config", Severity.CRITICAL, "IIS web.config exposed"),
+    ("secrets_phpinfo", "/phpinfo.php", Severity.HIGH, "PHP info page exposed"),
+    ("secrets_server_status", "/server-status", Severity.HIGH, "Apache server-status page exposed"),
+    ("secrets_actuator_env", "/actuator/env", Severity.CRITICAL, "Spring Boot actuator /env endpoint exposed"),
+    ("secrets_actuator_health", "/actuator/health", Severity.MEDIUM, "Spring Boot actuator /health endpoint exposed"),
+    ("secrets_swagger", "/swagger.json", Severity.MEDIUM, "Swagger API docs publicly accessible"),
+    ("secrets_openapi", "/openapi.json", Severity.MEDIUM, "OpenAPI docs publicly accessible"),
+    ("secrets_api_docs", "/api-docs", Severity.MEDIUM, "API docs endpoint publicly accessible"),
 ]
 
 DIR_LISTING_PATHS = ["/uploads", "/backup", "/static", "/files", "/assets"]
@@ -75,6 +86,52 @@ async def _probe_dir_listing(client: httpx.AsyncClient, base: str, path: str) ->
     return None
 
 
+async def _probe_robots_txt(client: httpx.AsyncClient, base: str) -> Finding | None:
+    try:
+        resp = await client.get(f"{base}/robots.txt")
+        if resp.status_code != 200:
+            return None
+        sensitive_paths = [
+            line.split(":", 1)[1].strip()
+            for line in resp.text.splitlines()
+            if line.strip().lower().startswith("disallow:")
+            and ROBOTS_SENSITIVE.search(line)
+        ]
+        if sensitive_paths:
+            paths_str = ", ".join(sensitive_paths[:10])
+            return Finding(
+                id="secrets_robots_sensitive_paths",
+                severity=Severity.MEDIUM,
+                title="robots.txt discloses sensitive paths",
+                description=f"robots.txt reveals internal paths that may be worth investigating: {paths_str}",
+                affected=f"{base}/robots.txt",
+                fix="Remove sensitive path entries from robots.txt. Blocking indexing via robots.txt is not a security control — protect the paths with authentication instead.",
+                category=Category.SECRETS,
+            )
+    except httpx.RequestError:
+        pass
+    return None
+
+
+async def _probe_security_txt(client: httpx.AsyncClient, base: str) -> Finding | None:
+    for path in ("/.well-known/security.txt", "/security.txt"):
+        try:
+            resp = await client.get(f"{base}{path}")
+            if resp.status_code == 200:
+                return Finding(
+                    id="secrets_security_txt_present",
+                    severity=Severity.PASS,
+                    title="security.txt present",
+                    description=f"A security.txt file was found at {base}{path}, providing a responsible disclosure contact for security researchers.",
+                    affected=f"{base}{path}",
+                    fix="No action needed.",
+                    category=Category.SECRETS,
+                )
+        except httpx.RequestError:
+            pass
+    return None
+
+
 async def scan(host_url: str) -> list[Finding]:
     base = host_url.rstrip("/")
 
@@ -83,6 +140,8 @@ async def scan(host_url: str) -> list[Finding]:
             results = await asyncio.gather(
                 *[_probe(client, base, pid, path, sev, title) for pid, path, sev, title in PROBES],
                 *[_probe_dir_listing(client, base, path) for path in DIR_LISTING_PATHS],
+                _probe_robots_txt(client, base),
+                _probe_security_txt(client, base),
             )
     except httpx.RequestError:
         return []

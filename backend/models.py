@@ -18,6 +18,8 @@ class Category(str, Enum):
     GITHUB = "github"
     HEADERS = "headers"
     DNS = "dns"
+    COOKIES = "cookies"
+    CORS = "cors"
 
 
 class Finding(BaseModel):
