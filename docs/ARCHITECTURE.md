@@ -2,7 +2,7 @@
 
 ## System Design
 
-Stateless web app. The backend scans a target URL for security issues and returns findings in a single HTTP response. No database, no sessions, no user accounts.
+This is a straightforward security scanning tool. The backend checks a website for security problems and provides the results instantly. It doesn't store any past scans, user information, or rely on a database.
 
 ## Data Flow
 

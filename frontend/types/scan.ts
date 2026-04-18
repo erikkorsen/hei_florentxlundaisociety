@@ -35,6 +35,8 @@ export interface GroupedFinding {
   count: number;
   raw_ids: string[];
   likely_false_positive: boolean;
+  plain_english: string;
+  business_impact: string;
 }
 
 export interface AnalysisResponse {

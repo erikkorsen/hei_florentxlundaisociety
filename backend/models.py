@@ -58,6 +58,8 @@ class GroupedFinding(BaseModel):
     count: int
     raw_ids: list[str]
     likely_false_positive: bool = False
+    plain_english: str = ""
+    business_impact: str = ""
 
 
 class AnalyseRequest(BaseModel):

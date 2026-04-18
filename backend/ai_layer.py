@@ -23,8 +23,23 @@ CATEGORY_GROUP_TITLES = {
     Category.FIREWALL: lambda n: f"{n} firewall issue(s)",
 }
 
+CATEGORY_PASS_TITLES = {
+    Category.SECRETS: "No exposed secrets or credentials",
+    Category.PORTS: "No dangerous ports open",
+    Category.SSL: "SSL/TLS properly configured",
+    Category.ADMIN: "No exposed admin panels",
+    Category.HEADERS: "Security headers in place",
+    Category.DNS: "Email & DNS security configured",
+    Category.COOKIES: "Cookies properly secured",
+    Category.CORS: "CORS policy configured correctly",
+    Category.GITHUB: "GitHub workflows secure",
+    Category.FIREWALL: "Firewall configured",
+    Category.SUBDOMAINS: "No subdomain issues found",
+    Category.BREACH: "No known data breaches",
+}
 
-def _group_findings(findings: list[Finding]) -> tuple[list[GroupedFinding], int]:
+
+def _group_findings(findings: list[Finding]) -> tuple[list[GroupedFinding], list[GroupedFinding], int]:
     issues = [f for f in findings if f.severity != Severity.PASS]
     passes = [f for f in findings if f.severity == Severity.PASS]
 
@@ -61,10 +76,39 @@ def _group_findings(findings: list[Finding]) -> tuple[list[GroupedFinding], int]
             count=count,
             raw_ids=[f.id for f in cat_findings],
             likely_false_positive=False,
+            plain_english="",
+            business_impact="",
         ))
 
     groups.sort(key=lambda g: SEVERITY_ORDER.get(g.severity, 99))
-    return groups, len(passes)
+
+    # Group passes by category
+    pass_by_cat: dict[Category, list[Finding]] = defaultdict(list)
+    for f in passes:
+        pass_by_cat[f.category].append(f)
+
+    pass_groups: list[GroupedFinding] = []
+    for cat, cat_findings in pass_by_cat.items():
+        count = len(cat_findings)
+        title = CATEGORY_PASS_TITLES.get(cat, f"{cat.value} checks passed")
+        description = " · ".join(f.title for f in cat_findings)
+
+        pass_groups.append(GroupedFinding(
+            id=f"pass_{cat.value}",
+            severity=Severity.PASS,
+            title=title,
+            description=description,
+            affected=[],
+            fix="",
+            category=cat,
+            count=count,
+            raw_ids=[f.id for f in cat_findings],
+            likely_false_positive=False,
+            plain_english="",
+            business_impact="",
+        ))
+
+    return groups, pass_groups, len(passes)
 
 
 async def _enrich_with_ai(
@@ -98,22 +142,24 @@ Instructions:
 
 Return ONLY a valid JSON object with exactly these fields:
 {{
-  "summary": "2-3 sentences. Plain English for a non-technical founder or developer. Assess the ACTUAL risk for this specific site. If findings appear to be scanner noise for a mature site, say so clearly. Be direct, not alarmist.",
-  "priority_actions": ["most important fix", "second most important", "third"],
+  "summary": "4-5 sentences written for a non-technical person (think: business owner or founder, not a developer). Assess the overall security posture of the site. Explain why the site received the grade it did. Call out whether findings are genuine risks or likely scanner noise. Be direct, not alarmist.",
+  "priority_actions": ["[Quick fix] most important easy fix", "[Moderate] second most important", "[Major] third most important"],
   "groups": [
     {{
       "id": "<same id from input, unchanged>",
       "title": "<rewritten title, contextual and specific>",
       "description": "<nuanced description — if this is likely a false positive or low risk for this target, explain why>",
-      "likely_false_positive": true or false
+      "likely_false_positive": true or false,
+      "plain_english": "<explain this finding like you're talking to someone who doesn't know what a port, header, or SSL is. One sentence, no jargon, use everyday analogies.>",
+      "business_impact": "<what's the worst realistic thing that could happen if this isn't fixed? One sentence.>"
     }}
   ]
 }}
 
 Rules:
-- "priority_actions" must have exactly 3 items. If fewer than 3 real issues exist, fill remaining slots with "No further action needed."
+- "priority_actions" must have exactly 3 items. Each item must begin with one of: [Quick fix], [Moderate], or [Major]. If fewer than 3 real issues exist, fill remaining slots with "[Quick fix] No further action needed."
 - Every group from input must appear in "groups" output, same id
-- Do not change "severity" — only title, description, likely_false_positive
+- Do not change "severity" — only title, description, likely_false_positive, plain_english, business_impact
 - Respond with JSON only. No markdown, no explanation outside the JSON."""
 
     try:
@@ -123,10 +169,10 @@ Rules:
         msg = await asyncio.wait_for(
             client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=1500,
+                max_tokens=3000,
                 messages=[{"role": "user", "content": prompt}],
             ),
-            timeout=20,
+            timeout=30,
         )
 
         raw = msg.content[0].text.strip()
@@ -149,6 +195,8 @@ Rules:
                     "title": g_data.get("title", original.title),
                     "description": g_data.get("description", original.description),
                     "likely_false_positive": bool(g_data.get("likely_false_positive", False)),
+                    "plain_english": g_data.get("plain_english", ""),
+                    "business_impact": g_data.get("business_impact", ""),
                 })
 
         enriched = sorted(group_map.values(), key=lambda g: SEVERITY_ORDER.get(g.severity, 99))
@@ -159,14 +207,16 @@ Rules:
 
 
 async def analyse(request: AnalyseRequest) -> AnalysisResponse:
-    groups, pass_count = _group_findings(request.findings)
-    summary, priority_actions, enriched_groups = await _enrich_with_ai(request.target_url, groups)
+    issue_groups, pass_groups, pass_count = _group_findings(request.findings)
+    summary, priority_actions, enriched_groups = await _enrich_with_ai(request.target_url, issue_groups)
+
+    all_groups = list(enriched_groups) + pass_groups
 
     return AnalysisResponse(
         target_url=request.target_url,
         summary=summary,
         priority_actions=priority_actions,
-        grouped_findings=enriched_groups,
+        grouped_findings=all_groups,
         pass_count=pass_count,
         ai_powered=summary is not None,
         raw_findings=request.findings,

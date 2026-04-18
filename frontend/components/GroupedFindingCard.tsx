@@ -85,20 +85,35 @@ export default function GroupedFindingCard({ finding }: { finding: GroupedFindin
         {/* Description */}
         <p className="text-gray-300 text-sm leading-relaxed">{finding.description}</p>
 
-        {/* "What does this mean?" expandable */}
-        {catInfo.context && !isPass && (
-          <div>
-            <button
-              onClick={() => setShowContext(v => !v)}
-              className="text-xs text-indigo-400 hover:text-indigo-300 transition font-medium"
-            >
-              {showContext ? "▲ Hide context" : "▼ What does this mean?"}
-            </button>
-            {showContext && (
-              <p className="mt-2 text-xs text-indigo-200/70 leading-relaxed bg-indigo-950/30 border border-indigo-900/50 rounded-lg px-3 py-2">
-                {catInfo.context}
-              </p>
-            )}
+        {/* "In plain English" — AI-generated if available, else expandable fallback */}
+        {!isPass && (
+          finding.plain_english ? (
+            <div className="rounded-lg bg-indigo-950/40 border border-indigo-900/50 px-3 py-2 space-y-0.5">
+              <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">In plain English</p>
+              <p className="text-xs text-indigo-200/80 leading-relaxed">{finding.plain_english}</p>
+            </div>
+          ) : catInfo.context ? (
+            <div>
+              <button
+                onClick={() => setShowContext(v => !v)}
+                className="text-xs text-indigo-400 hover:text-indigo-300 transition font-medium"
+              >
+                {showContext ? "▲ Hide context" : "▼ What does this mean?"}
+              </button>
+              {showContext && (
+                <p className="mt-2 text-xs text-indigo-200/70 leading-relaxed bg-indigo-950/30 border border-indigo-900/50 rounded-lg px-3 py-2">
+                  {catInfo.context}
+                </p>
+              )}
+            </div>
+          ) : null
+        )}
+
+        {/* Business impact */}
+        {!isPass && finding.business_impact && (
+          <div className="rounded-lg bg-orange-950/30 border border-orange-900/40 px-3 py-2 space-y-0.5">
+            <p className="text-xs font-semibold text-orange-400 uppercase tracking-wider">Potential impact</p>
+            <p className="text-xs text-orange-200/80 leading-relaxed">{finding.business_impact}</p>
           </div>
         )}
       </div>
