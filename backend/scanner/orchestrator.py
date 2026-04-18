@@ -28,6 +28,24 @@ async def run_scan(request: ScanRequest) -> ScanResponse:
             findings.extend(result)
         # Exceptions from individual scanners are silently skipped
 
+    # If no findings at all, target was unreachable
+    if not findings:
+        return ScanResponse(
+            target_url=request.url,
+            github_url=request.github_url,
+            scan_duration_seconds=round(time.time() - start, 2),
+            summary={"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "PASS": 0},
+            findings=[Finding(
+                id="target_unreachable",
+                severity=Severity.HIGH,
+                title="Target unreachable",
+                description=f"Could not connect to {request.url}. The host may be down, blocked, or the URL may be incorrect.",
+                affected=request.url,
+                fix="Verify the URL is correct and the target is publicly accessible.",
+                category=Category.SSL,
+            )],
+        )
+
     # Firewall inference: 3+ open ports → CRITICAL
     open_port_count = sum(1 for f in findings if f.category == Category.PORTS and f.severity != Severity.PASS)
     if open_port_count >= 3:

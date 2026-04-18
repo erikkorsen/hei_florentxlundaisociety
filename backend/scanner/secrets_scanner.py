@@ -24,7 +24,14 @@ FIX_TEXT = (
 )
 
 
-async def _probe(client: httpx.AsyncClient, base: str, probe_id: str, path: str, severity: Severity, title: str) -> Finding | None:
+async def _probe(
+    client: httpx.AsyncClient,
+    base: str,
+    probe_id: str,
+    path: str,
+    severity: Severity,
+    title: str,
+) -> Finding | None | Exception:
     try:
         url = f"{base}{path}"
         resp = await client.get(url)
@@ -49,9 +56,9 @@ async def _probe(client: httpx.AsyncClient, base: str, probe_id: str, path: str,
                 fix="Verify this path is not accessible after following the redirect. Block it in your web server config if unnecessary.",
                 category=Category.SECRETS,
             )
-    except httpx.RequestError:
-        pass
-    return None
+        return None
+    except httpx.RequestError as e:
+        return e  # Return exception so caller can detect unreachable
 
 
 async def scan(host_url: str) -> list[Finding]:
@@ -62,10 +69,15 @@ async def scan(host_url: str) -> list[Finding]:
             results = await asyncio.gather(
                 *[_probe(client, base, pid, path, sev, title) for pid, path, sev, title in PROBES]
             )
-    except httpx.RequestError:
+    except Exception:
         return []
 
-    findings = [r for r in results if r is not None]
+    findings = [r for r in results if isinstance(r, Finding)]
+    errors = [r for r in results if isinstance(r, Exception)]
+
+    # If ALL probes errored (site unreachable), don't emit a false PASS
+    if len(errors) == len(results):
+        return []
 
     if not findings:
         findings.append(Finding(

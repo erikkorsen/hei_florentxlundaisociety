@@ -1,55 +1,43 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Context for AI assistants (Claude, Gemini, etc.) working in this repo.
 
-## Project Overview
+## What This Is
 
-Security scanning web app. Users paste a URL (and optionally a GitHub repo URL) and receive a list of security vulnerabilities displayed as severity-coded cards (CRITICAL / HIGH / MEDIUM / PASS).
+A security scanner web app. Users paste a URL (and optionally a GitHub repo URL) and get back a list of security findings ranked by severity: CRITICAL, HIGH, MEDIUM, or PASS. Fully stateless — no database, no auth, no persistence.
 
-- **Backend:** FastAPI (Python) — `backend/` — runs on port 8000
-- **Frontend:** Next.js 14 with TypeScript + Tailwind — `frontend/` — runs on port 3000
-- **Docs:** `docs/` — three source-of-truth files defining architecture, scan checks, and the sprint work plan
+## Tech Stack
 
-## Commands
+- **Backend:** FastAPI (Python), async-native, runs on port 8000
+- **Frontend:** Next.js with TypeScript + Tailwind, runs on port 3000
+- **HTTP probing:** `httpx` (async, redirects disabled by default for probes)
+- **Port scanning:** `asyncio.open_connection()` — no nmap, no root needed
+- **SSL checking:** Python `ssl` stdlib
 
-### Backend
+## How to Run
+
 ```bash
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
-```
+# Backend
+cd backend && source venv/bin/activate && uvicorn main:app --reload --port 8000
 
-### Frontend
-```bash
-cd frontend
-npm install
-npm run dev        # development server on port 3000
-npm run build      # production build
-npm run lint       # ESLint
+# Frontend
+cd frontend && npm install && npm run dev
 ```
 
 ## Architecture
 
-The full architecture is defined in `docs/ARCHITECTURE.md`. Key points:
+See `docs/ARCHITECTURE.md` for full details. The key ideas:
 
-**API:** Single endpoint — `POST /api/scan` — accepts `{ url, github_url? }`, returns all findings in one response (no streaming). Stateless: no database, no auth.
+- **Single endpoint:** `POST /api/scan` accepts `{ url, github_url? }` and returns all findings at once.
+- **Orchestrator pattern:** `scanner/orchestrator.py` runs all scanner modules concurrently via `asyncio.gather()` with a global timeout.
+- **Scanner contract:** Every scanner module exports `async def scan(...) -> list[Finding]`. Each handles its own errors internally.
+- **Finding model:** Uniform schema across all scanners — defined in `backend/models.py`. Fields: `id`, `severity`, `title`, `description`, `affected`, `fix`, `category`.
+- **Frontend state machine:** `page.tsx` cycles through idle → scanning → results → error.
 
-**Backend concurrency:** All scanner modules run concurrently inside a single `asyncio.gather()` in `scanner/orchestrator.py`, wrapped in a 25-second global timeout. Wall-clock scan time ≈ slowest individual check.
+## Scan Categories
 
-**Port scanning:** Uses `asyncio.open_connection()` with 1.5s timeout — no `nmap`, no root required. Redis (6379) and Docker API (2375) get additional handshake probes if the port is open.
-
-**HTTP probing:** Uses `httpx.AsyncClient` with `follow_redirects=False`. A 301/302 on a secret file path is flagged MEDIUM rather than treated as "not found."
-
-**Firewall inference:** If 3+ dangerous ports are open, the orchestrator emits an additional CRITICAL `firewall_disabled` finding. This is derived — no separate network call.
-
-**Finding schema:** Every scanner returns `list[Finding]`. The `Finding` model (defined in `models.py`) is uniform across all scanner categories: `id`, `severity`, `title`, `description`, `affected`, `fix`, `category`. See `docs/CHECKS.md` for the full severity mapping table.
-
-**Frontend state machine:** `page.tsx` cycles through `"idle" | "scanning" | "results" | "error"`. The loading state is purely client-side with cycling messages — the backend returns all results at once.
-
-## Scan Checks Reference
-
-All checks with severity rules, trigger conditions, regex patterns, and fix text are defined in `docs/CHECKS.md`. Do not hardcode severity levels or fix text without consulting it.
+See `docs/CHECKS.md` for guidelines on what each scanner looks for. Categories: secrets, ssl, ports, admin, firewall (derived), github.
 
 ## Test Target
 
-`http://testphp.vulnweb.com` is a legally sanctioned intentionally vulnerable site — use it for manual end-to-end testing.
+`http://testphp.vulnweb.com` is a legally sanctioned intentionally vulnerable site for manual testing (may be intermittently down).

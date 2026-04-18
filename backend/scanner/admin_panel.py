@@ -10,12 +10,24 @@ PROBES = [
     ("admin_panel_phpmyadmin", "/phpmyadmin", Severity.HIGH, "phpMyAdmin exposed"),
     ("admin_panel_adminer", "/adminer.php", Severity.CRITICAL, "Adminer database UI exposed"),
     ("admin_panel_administrator", "/administrator", Severity.HIGH, "Administrator panel exposed"),
+    ("admin_panel_login", "/login.php", Severity.MEDIUM, "Login page publicly accessible"),
+    ("admin_panel_admin_php", "/admin.php", Severity.HIGH, "Admin PHP page exposed"),
+    ("admin_panel_userinfo", "/userinfo.php", Severity.MEDIUM, "User info page publicly accessible"),
+    ("admin_panel_manager", "/manager", Severity.HIGH, "Manager panel exposed"),
+    ("admin_panel_cpanel", "/cpanel", Severity.HIGH, "cPanel exposed"),
 ]
 
 DESCRIPTION = "This panel is accessible from the internet. Ensure only authorized users have credentials, and consider restricting access by IP."
 
 
-async def _probe(client: httpx.AsyncClient, base: str, probe_id: str, path: str, severity: Severity, title: str) -> Finding | None:
+async def _probe(
+    client: httpx.AsyncClient,
+    base: str,
+    probe_id: str,
+    path: str,
+    severity: Severity,
+    title: str,
+) -> Finding | None | Exception:
     try:
         url = f"{base}{path}"
         resp = await client.get(url)
@@ -42,9 +54,9 @@ async def _probe(client: httpx.AsyncClient, base: str, probe_id: str, path: str,
                     fix="Restrict access to /wp-admin by IP or use a security plugin to limit login attempts.",
                     category=Category.ADMIN,
                 )
-    except httpx.RequestError:
-        pass
-    return None
+        return None
+    except httpx.RequestError as e:
+        return e  # Return the exception so caller can detect unreachable
 
 
 async def scan(host_url: str) -> list[Finding]:
@@ -55,10 +67,15 @@ async def scan(host_url: str) -> list[Finding]:
             results = await asyncio.gather(
                 *[_probe(client, base, pid, path, sev, title) for pid, path, sev, title in PROBES]
             )
-    except httpx.RequestError:
+    except Exception:
         return []
 
-    findings = [r for r in results if r is not None]
+    findings = [r for r in results if isinstance(r, Finding)]
+    errors = [r for r in results if isinstance(r, Exception)]
+
+    # If ALL probes errored (site unreachable), don't emit a false PASS
+    if len(errors) == len(results):
+        return []
 
     if not findings:
         findings.append(Finding(
