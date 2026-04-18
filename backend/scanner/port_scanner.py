@@ -85,7 +85,7 @@ async def _check_port(
         title=title,
         description=description,
         affected=f"{host}:{port}",
-        fix=f"Restrict access to port {port} ({service}) using a firewall. Only allow trusted IPs.",
+        fix=f"Block port {port} ({service}) from public access. On Linux: `sudo ufw deny {port}/tcp`. On AWS: remove port {port} from your security group inbound rules. If the service needs remote access, restrict to specific IPs only.",
         category=Category.PORTS,
     )
 

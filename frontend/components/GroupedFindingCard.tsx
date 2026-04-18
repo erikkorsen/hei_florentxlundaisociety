@@ -29,9 +29,14 @@ function isUrl(value: string) {
   return value.startsWith("http://") || value.startsWith("https://");
 }
 
-export default function GroupedFindingCard({ finding }: { finding: GroupedFinding }) {
+interface Props {
+  finding: GroupedFinding;
+  compact?: boolean;
+}
+
+export default function GroupedFindingCard({ finding, compact = false }: Props) {
+  const [open, setOpen] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
-  const [showFix, setShowFix] = useState(false);
   const [showContext, setShowContext] = useState(false);
   const styles = SEVERITY_STYLES[finding.severity];
   const muted = finding.likely_false_positive;
@@ -40,12 +45,71 @@ export default function GroupedFindingCard({ finding }: { finding: GroupedFindin
 
   const hasDetails = !isPass && (finding.business_impact || finding.affected.length > 0 || finding.count > 1);
 
+  // Compact mode: click to expand, shows only metadata + title
+  if (compact) {
+    return (
+      <div className={`border border-zinc-800 overflow-hidden transition ${
+        !isPass ? `border-l-2 ${styles.borderLeft}` : ""
+      } ${muted ? "opacity-50" : ""}`}>
+        <button
+          onClick={() => setOpen(v => !v)}
+          className="w-full px-5 py-3 flex items-center gap-3 text-left hover:bg-zinc-900/50 transition"
+        >
+          <span className={`inline-flex items-center px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide shrink-0 ${styles.badge}`}>
+            {styles.label}
+          </span>
+          <span className="text-zinc-600 text-xs shrink-0">{catInfo.label}</span>
+          <span className="text-white text-sm font-medium truncate">{finding.title}</span>
+          <span className="text-zinc-600 text-xs ml-auto shrink-0">{open ? "−" : "+"}</span>
+        </button>
+
+        {open && (
+          <div className="px-5 pb-4 space-y-3 border-t border-zinc-900 pt-3">
+            {/* Explanation */}
+            {finding.plain_english ? (
+              <p className="text-zinc-400 text-sm leading-[1.7]">{finding.plain_english}</p>
+            ) : finding.description ? (
+              <p className="text-zinc-400 text-sm leading-[1.7]">{finding.description}</p>
+            ) : null}
+
+            {/* Fix — visible if present */}
+            {finding.fix && !isPass && (
+              <div className="border-l-2 border-zinc-700 pl-3">
+                <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium mb-1">How to fix</p>
+                <p className="text-zinc-300 text-sm leading-[1.7]">{finding.fix}</p>
+              </div>
+            )}
+
+            {/* Proof links */}
+            {!isPass && finding.affected.length > 0 && (
+              <div className="space-y-0.5">
+                {finding.affected.slice(0, 3).map((a, i) => (
+                  <div key={i} className="font-mono text-xs">
+                    {isUrl(a) ? (
+                      <a href={a} target="_blank" rel="noopener noreferrer"
+                        className="text-zinc-500 hover:text-white truncate block max-w-full underline underline-offset-2 transition">
+                        {a}
+                      </a>
+                    ) : (
+                      <span className="text-zinc-500">{a}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Full mode: problems tab — everything visible
   return (
     <div className={`border border-zinc-800 overflow-hidden transition ${
       !isPass ? `border-l-2 ${styles.borderLeft}` : ""
     } ${muted ? "opacity-50" : ""}`}>
 
-      {/* ── Always visible: problem + simple explanation ── */}
+      {/* ── Always visible ── */}
       <div className="px-5 py-4 space-y-3">
 
         {/* Metadata */}
@@ -62,10 +126,10 @@ export default function GroupedFindingCard({ finding }: { finding: GroupedFindin
           )}
         </div>
 
-        {/* Title — the problem */}
+        {/* Title */}
         <h3 className="text-white font-semibold text-[15px] leading-snug">{finding.title}</h3>
 
-        {/* Simple explanation — always visible */}
+        {/* Simple explanation */}
         {!isPass && (
           finding.plain_english ? (
             <p className="text-zinc-400 text-sm leading-[1.7]">{finding.plain_english}</p>
@@ -84,7 +148,7 @@ export default function GroupedFindingCard({ finding }: { finding: GroupedFindin
           ) : null
         )}
 
-        {/* Affected URLs — always visible as proof links */}
+        {/* Proof links */}
         {!isPass && finding.affected.length > 0 && (
           <div className="space-y-0.5">
             {finding.affected.slice(0, 3).map((a, i) => (
@@ -105,55 +169,45 @@ export default function GroupedFindingCard({ finding }: { finding: GroupedFindin
           </div>
         )}
 
-        {/* Toggle for details */}
-        {!isPass && (
-          <div className="flex gap-4 flex-wrap pt-1">
-            {hasDetails && (
-              <button
-                onClick={() => setShowDetails(v => !v)}
-                className="text-xs text-zinc-500 hover:text-zinc-300 transition font-medium"
-              >
-                {showDetails ? "Hide details" : "Show details"}
-              </button>
-            )}
-            {finding.fix && (
-              <button
-                onClick={() => setShowFix(v => !v)}
-                className="text-xs text-zinc-500 hover:text-zinc-300 transition font-medium"
-              >
-                {showFix ? "Hide fix" : "How to fix"}
-              </button>
-            )}
+        {/* Fix — always visible, prominent */}
+        {finding.fix && !isPass && (
+          <div className="border-l-2 border-zinc-700 pl-3 mt-1">
+            <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium mb-1">How to fix</p>
+            <p className="text-zinc-300 text-sm leading-[1.7]">{finding.fix}</p>
           </div>
+        )}
+
+        {/* Details toggle */}
+        {hasDetails && (
+          <button
+            onClick={() => setShowDetails(v => !v)}
+            className="text-xs text-zinc-500 hover:text-zinc-300 transition font-medium pt-1"
+          >
+            {showDetails ? "Hide details" : "Show details"}
+          </button>
         )}
       </div>
 
-      {/* ── Expandable: details section ── */}
+      {/* ── Expandable details ── */}
       {showDetails && (
         <div className="px-5 pb-4 space-y-4 border-t border-zinc-900 pt-4">
-
-          {/* Full description */}
           {finding.description && (
             <div>
               <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium mb-1.5">Analysis</p>
               <p className="text-zinc-300 text-sm leading-[1.7]">{finding.description}</p>
             </div>
           )}
-
-          {/* Business impact */}
           {finding.business_impact && (
             <div>
               <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium mb-1.5">Potential impact</p>
               <p className="text-zinc-300 text-sm leading-[1.7]">{finding.business_impact}</p>
             </div>
           )}
-
-          {/* Affected items */}
-          {finding.affected.length > 0 && (
+          {finding.affected.length > 3 && (
             <div>
-              <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium mb-1.5">Affected</p>
+              <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium mb-1.5">All affected</p>
               <div className="space-y-0.5">
-                {finding.affected.slice(0, 5).map((a, i) => (
+                {finding.affected.map((a, i) => (
                   <div key={i} className="font-mono text-xs">
                     {isUrl(a) ? (
                       <a href={a} target="_blank" rel="noopener noreferrer"
@@ -165,14 +219,9 @@ export default function GroupedFindingCard({ finding }: { finding: GroupedFindin
                     )}
                   </div>
                 ))}
-                {finding.affected.length > 5 && (
-                  <div className="text-xs text-zinc-600">+{finding.affected.length - 5} more</div>
-                )}
               </div>
             </div>
           )}
-
-          {/* Individual findings */}
           {finding.count > 1 && (
             <div>
               <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium mb-1.5">Individual findings</p>
@@ -183,14 +232,6 @@ export default function GroupedFindingCard({ finding }: { finding: GroupedFindin
               </div>
             </div>
           )}
-        </div>
-      )}
-
-      {/* ── Expandable: fix section ── */}
-      {showFix && finding.fix && (
-        <div className="px-5 pb-4 border-t border-zinc-900 pt-4">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium mb-1.5">Remediation</p>
-          <p className="text-sm text-zinc-300 leading-[1.7]">{finding.fix}</p>
         </div>
       )}
     </div>

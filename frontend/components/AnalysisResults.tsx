@@ -112,10 +112,10 @@ export default function AnalysisResults({ scan, analysis, onReset }: Props) {
       </div>
 
       {/* ── Findings ─────────────────────────────────── */}
-      <div className="space-y-3">
+      <div className={tab === "all" ? "space-y-1" : "space-y-3"}>
         {visible.length === 0
           ? <p className="text-zinc-600 text-sm text-center py-16">No problems found.</p>
-          : visible.map(f => <GroupedFindingCard key={f.id} finding={f} />)
+          : visible.map(f => <GroupedFindingCard key={f.id} finding={f} compact={tab === "all"} />)
         }
 
         {/* False positive divider */}
@@ -128,7 +128,7 @@ export default function AnalysisResults({ scan, analysis, onReset }: Props) {
               </span>
               <div className="flex-1 border-t border-zinc-900" />
             </div>
-            {maybeNoise.map(f => <GroupedFindingCard key={f.id} finding={f} />)}
+            {maybeNoise.map(f => <GroupedFindingCard key={f.id} finding={f} compact={tab === "all"} />)}
           </>
         )}
       </div>
