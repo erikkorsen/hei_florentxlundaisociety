@@ -8,6 +8,20 @@ from scanner.llm_content_analyzer import analyze_exposed_file
 
 ROBOTS_SENSITIVE = re.compile(r"(admin|backup|config|internal|api|secret|private)", re.IGNORECASE)
 
+# Paths where a text/html response is a legitimate result (not a soft 404)
+HTML_OK_PATHS = {"/phpinfo.php", "/server-status", "/api-docs"}
+
+# Phrases that indicate a custom "not found" page returning HTTP 200 (soft 404)
+SOFT_404_SIGNALS = [
+    "this site does not exist",
+    "page not found",
+    "404 not found",
+    "doesn't exist",
+    "does not exist",
+    "page could not be found",
+    "nothing here",
+]
+
 CREDENTIAL_PATTERNS = re.compile(
     r"(PASSWORD|SECRET|API_KEY|APIKEY|TOKEN|DATABASE_URL|DB_PASS|AWS_SECRET|PRIVATE_KEY)\s*[=:]",
     re.IGNORECASE,
@@ -96,6 +110,13 @@ async def _probe(client: httpx.AsyncClient, base: str, probe_id: str, path: str,
         resp = await client.get(url)
 
         if resp.status_code == 200:
+            # Soft-404 detection: sites that return 200 for any path with a custom error page
+            content_type = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+            if content_type == "text/html" and path not in HTML_OK_PATHS:
+                return None
+            if any(sig in resp.text[:2000].lower() for sig in SOFT_404_SIGNALS):
+                return None
+
             body = resp.text[:10000]
             regex_extra = _analyze_content(path, body)
             llm_extra = await analyze_exposed_file(path, body)
@@ -110,6 +131,20 @@ async def _probe(client: httpx.AsyncClient, base: str, probe_id: str, path: str,
                 category=Category.SECRETS,
             )
         elif resp.status_code in (301, 302):
+            # Follow the redirect and check if it lands on a soft-404 page
+            location = resp.headers.get("location", "")
+            try:
+                async with httpx.AsyncClient(follow_redirects=True, timeout=5) as follow_client:
+                    final = await follow_client.get(url)
+                    final_ct = final.headers.get("content-type", "").split(";")[0].strip().lower()
+                    # After following a redirect, text/html always indicates a soft-404 —
+                    # real file-type secrets don't redirect to HTML pages
+                    if final_ct == "text/html":
+                        return None
+                    if any(sig in final.text[:2000].lower() for sig in SOFT_404_SIGNALS):
+                        return None
+            except httpx.RequestError:
+                pass
             return Finding(
                 id=probe_id,
                 severity=Severity.MEDIUM,
