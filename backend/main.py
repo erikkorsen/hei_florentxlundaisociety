@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 from dotenv import load_dotenv
@@ -34,8 +35,8 @@ async def scan(request: ScanRequest):
 
     try:
         result = await run_scan(request)
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="Scan timed out after 25 seconds")
+    except (TimeoutError, asyncio.TimeoutError):
+        raise HTTPException(status_code=504, detail="Scan timed out after 30 seconds")
     except ConnectionError:
         raise HTTPException(status_code=400, detail="Host unreachable")
 
