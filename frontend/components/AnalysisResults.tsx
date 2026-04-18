@@ -1,6 +1,6 @@
 "use client";
 
-import { ScanResponse, AnalysisResponse, Severity, GroupedFinding, Category } from "@/types/scan";
+import { ScanResponse, AnalysisResponse, Severity } from "@/types/scan";
 import { useState } from "react";
 import AISummaryCard from "./AISummaryCard";
 import GroupedFindingCard from "./GroupedFindingCard";
@@ -12,13 +12,6 @@ interface Props {
   analysis: AnalysisResponse;
   onReset: () => void;
 }
-
-const SEV_COLOR: Record<Severity, string> = {
-  CRITICAL: "text-red-400",
-  HIGH: "text-orange-400",
-  MEDIUM: "text-yellow-400",
-  PASS: "text-green-400",
-};
 
 const SEV_BG: Record<Severity, string> = {
   CRITICAL: "bg-red-900/40 text-red-200 border-red-800",
@@ -40,21 +33,23 @@ export default function AnalysisResults({ scan, analysis, onReset }: Props) {
   const { summary } = scan;
   const risk = grade(summary);
 
-  const sorted = [...analysis.grouped_findings].sort(
-    (a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity)
-  );
+  const bySeverity = (a: { severity: Severity }, b: { severity: Severity }) =>
+    SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity);
 
-  const issues = sorted.filter(f => f.severity !== "PASS");
-  const passes = sorted.filter(f => f.severity === "PASS");
+  const real      = [...analysis.grouped_findings].filter(f => !f.likely_false_positive).sort(bySeverity);
+  const maybeNoise = [...analysis.grouped_findings].filter(f => f.likely_false_positive).sort(bySeverity);
+
+  const passes = real.filter(f => f.severity === "PASS");
+  const issues = real.filter(f => f.severity !== "PASS");
 
   const visible =
-    filter === "ALL" ? sorted :
+    filter === "ALL"  ? real :
     filter === "PASS" ? passes :
     issues.filter(f => f.severity === filter);
 
   const severities: Severity[] = ["CRITICAL", "HIGH", "MEDIUM", "PASS"];
   const tabs = severities
-    .map(s => ({ s, count: sorted.filter(f => f.severity === s).length }))
+    .map(s => ({ s, count: real.filter(f => f.severity === s).length }))
     .filter(t => t.count > 0);
 
   return (
@@ -94,7 +89,7 @@ export default function AnalysisResults({ scan, analysis, onReset }: Props) {
       {/* ── Filter tabs ──────────────────────────────── */}
       <div className="flex gap-2 flex-wrap">
         <Tab active={filter === "ALL"} onClick={() => setFilter("ALL")}
-          label="All" count={sorted.length} color="bg-gray-700 text-white" />
+          label="All" count={real.length} color="bg-gray-700 text-white" />
         {tabs.map(({ s, count }) => (
           <Tab key={s} active={filter === s} onClick={() => setFilter(s)}
             label={s[0] + s.slice(1).toLowerCase()} count={count} color={SEV_BG[s]} />
@@ -107,6 +102,20 @@ export default function AnalysisResults({ scan, analysis, onReset }: Props) {
           ? <p className="text-gray-600 text-sm text-center py-10">Nothing to show.</p>
           : visible.map(f => <GroupedFindingCard key={f.id} finding={f} />)
         }
+
+        {/* False positive divider — only shown in "All" view */}
+        {filter === "ALL" && maybeNoise.length > 0 && (
+          <>
+            <div className="flex items-center gap-3 pt-2">
+              <div className="flex-1 border-t border-gray-800" />
+              <span className="text-xs text-gray-500 whitespace-nowrap">
+                ⚠ Possibly not applicable to this site
+              </span>
+              <div className="flex-1 border-t border-gray-800" />
+            </div>
+            {maybeNoise.map(f => <GroupedFindingCard key={f.id} finding={f} />)}
+          </>
+        )}
       </div>
 
     </div>

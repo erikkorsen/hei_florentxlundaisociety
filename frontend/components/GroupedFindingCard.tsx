@@ -49,7 +49,7 @@ export default function GroupedFindingCard({ finding }: { finding: GroupedFindin
   const isPass = finding.severity === "PASS";
 
   return (
-    <div className={`rounded-xl border ${styles.border} ${muted ? "opacity-50" : ""} ${styles.bg} bg-gray-900 overflow-hidden`}>
+    <div className={`rounded-xl border ${muted ? "border-dashed border-gray-700" : styles.border} ${muted ? "opacity-75" : styles.bg} bg-gray-900 overflow-hidden`}>
       {/* Top bar */}
       <div className="px-5 pt-4 pb-3 space-y-3">
         {/* Badges row */}
@@ -68,8 +68,8 @@ export default function GroupedFindingCard({ finding }: { finding: GroupedFindin
             </span>
           )}
           {muted && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-gray-800 text-gray-500">
-              Likely false positive
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-yellow-950 text-yellow-400 border border-yellow-800">
+              ⚠ May not apply
             </span>
           )}
         </div>
