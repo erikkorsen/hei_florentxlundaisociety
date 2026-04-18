@@ -5,7 +5,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from models import ScanRequest, ScanResponse
+import ai_layer
+from models import ScanRequest, ScanResponse, AnalyseRequest, AnalysisResponse
 from scanner.orchestrator import run_scan
 
 load_dotenv()
@@ -41,3 +42,8 @@ async def scan(request: ScanRequest):
         raise HTTPException(status_code=400, detail="Host unreachable")
 
     return result
+
+
+@app.post("/api/analyse", response_model=AnalysisResponse)
+async def analyse(request: AnalyseRequest):
+    return await ai_layer.analyse(request)

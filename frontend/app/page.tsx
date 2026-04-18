@@ -2,15 +2,16 @@
 
 import { useState } from "react";
 import ScanForm from "@/components/ScanForm";
-import ScanResults from "@/components/ScanResults";
+import AnalysisResults from "@/components/AnalysisResults";
 import LoadingState from "@/components/LoadingState";
-import { runScan } from "@/lib/api";
-import { ScanResponse } from "@/types/scan";
+import { runScan, runAnalysis } from "@/lib/api";
+import { ScanResponse, AnalysisResponse } from "@/types/scan";
 
 type State =
   | { status: "idle" }
   | { status: "scanning"; url: string }
-  | { status: "results"; result: ScanResponse }
+  | { status: "analysing"; url: string; scan: ScanResponse }
+  | { status: "results"; scan: ScanResponse; analysis: AnalysisResponse }
   | { status: "error"; message: string; url: string };
 
 export default function Home() {
@@ -18,13 +19,30 @@ export default function Home() {
 
   async function handleScan(url: string, githubUrl?: string) {
     setState({ status: "scanning", url });
+    let scan: ScanResponse;
     try {
-      const result = await runScan({ url, github_url: githubUrl });
-      setState({ status: "results", result });
+      scan = await runScan({ url, github_url: githubUrl });
     } catch (err) {
       setState({
         status: "error",
         message: err instanceof Error ? err.message : "Something went wrong.",
+        url,
+      });
+      return;
+    }
+
+    setState({ status: "analysing", url, scan });
+    try {
+      const analysis = await runAnalysis({
+        target_url: scan.target_url,
+        github_url: githubUrl,
+        findings: scan.findings,
+      });
+      setState({ status: "results", scan, analysis });
+    } catch (err) {
+      setState({
+        status: "error",
+        message: err instanceof Error ? err.message : "Analysis failed.",
         url,
       });
     }
@@ -63,8 +81,16 @@ export default function Home() {
 
         {state.status === "scanning" && <LoadingState />}
 
+        {state.status === "analysing" && (
+          <LoadingState fixedMessage="AI is reviewing findings…" />
+        )}
+
         {state.status === "results" && (
-          <ScanResults result={state.result} onReset={handleReset} />
+          <AnalysisResults
+            scan={state.scan}
+            analysis={state.analysis}
+            onReset={handleReset}
+          />
         )}
       </div>
     </main>

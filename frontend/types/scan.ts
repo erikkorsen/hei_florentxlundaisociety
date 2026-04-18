@@ -23,3 +23,32 @@ export interface ScanRequest {
   url: string;
   github_url?: string;
 }
+
+export interface GroupedFinding {
+  id: string;
+  severity: Severity;
+  title: string;
+  description: string;
+  affected: string[];
+  fix: string;
+  category: Category;
+  count: number;
+  raw_ids: string[];
+  likely_false_positive: boolean;
+}
+
+export interface AnalysisResponse {
+  target_url: string;
+  summary: string | null;
+  priority_actions: string[];
+  grouped_findings: GroupedFinding[];
+  pass_count: number;
+  ai_powered: boolean;
+  raw_findings: Finding[];
+}
+
+export interface AnalyseRequest {
+  target_url: string;
+  github_url?: string;
+  findings: Finding[];
+}
