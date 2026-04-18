@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 from collections import defaultdict
+from pathlib import Path
 
 from models import (
     AnalyseRequest, AnalysisResponse, Category, Finding,
@@ -9,6 +10,10 @@ from models import (
 )
 
 SEVERITY_ORDER = {Severity.CRITICAL: 0, Severity.HIGH: 1, Severity.MEDIUM: 2, Severity.PASS: 3}
+
+# Load the AI content style guide once at import time
+_STYLE_GUIDE_PATH = Path(__file__).resolve().parent.parent / "docs" / "AI_STYLE.md"
+_STYLE_GUIDE = _STYLE_GUIDE_PATH.read_text() if _STYLE_GUIDE_PATH.exists() else ""
 
 CATEGORY_GROUP_TITLES = {
     Category.PORTS: lambda n: f"{n} dangerous ports open",
@@ -113,54 +118,92 @@ def _group_findings(findings: list[Finding]) -> tuple[list[GroupedFinding], list
 
 async def _enrich_with_ai(
     target_url: str,
+    github_url: str | None,
     groups: list[GroupedFinding],
+    findings: list[Finding],
 ) -> tuple[str | None, list[str], list[GroupedFinding]]:
     api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTROPHIC_API_KEY")
     if not api_key or not groups:
         return None, [], groups
 
-    groups_data = [
-        {
+    # Build a lookup: category -> raw findings for that category
+    findings_by_cat: dict[str, list[Finding]] = defaultdict(list)
+    for f in findings:
+        if f.severity != Severity.PASS:
+            findings_by_cat[f.category.value].append(f)
+
+    groups_data = []
+    for g in groups:
+        entry: dict = {
             "id": g.id,
             "category": g.category.value,
             "severity": g.severity.value,
             "title": g.title,
-            "description": g.description,
-            "count": g.count,
+            "affected": g.affected,
+            "fix": g.fix,
         }
-        for g in groups
-    ]
+        # Include individual findings so the AI can assess each one
+        raw = findings_by_cat.get(g.category.value, [])
+        if len(raw) > 1:
+            entry["findings"] = [
+                {
+                    "severity": f.severity.value,
+                    "title": f.title,
+                    "description": f.description,
+                    "affected": f.affected,
+                }
+                for f in raw
+            ]
+        else:
+            entry["description"] = g.description
+        groups_data.append(entry)
 
-    prompt = f"""You are a security analyst reviewing automated scan results for: {target_url}
+    target_context = f"Target: {target_url}"
+    if github_url:
+        target_context += f"\nGitHub repo: {github_url}"
 
-Grouped findings (JSON):
+    prompt = f"""{target_context}
+
+You are reviewing automated security scan results. Your job is to make these results ACCURATE and USEFUL — not to repeat what the scanner said, but to apply real-world judgment.
+
+Follow this style guide for all text you write:
+{_STYLE_GUIDE}
+
+Scan findings (JSON):
 {json.dumps(groups_data, indent=2)}
 
-Instructions:
-- Consider what kind of site this likely is based on the URL (major company, startup, local server, etc.)
-- Some findings may be false positives or low-risk for this specific target (e.g. large companies like Google use alternative security mechanisms that generic scanners miss)
+Your task:
+1. Look at the actual affected URLs/hosts and finding details. Assess whether each finding represents a REAL risk for this specific target.
+2. Scanners are blunt tools — they flag things that may not actually be problems. Common false positives:
+   - Large sites (Google, AWS, Cloudflare-proxied sites) intentionally omit certain headers or expose certain ports as part of their architecture
+   - Admin paths returning 200 may just be custom 404 pages or redirects to login
+   - Missing email security records on domains that don't send email
+   - Open ports that are behind load balancers or firewalls
+   - CORS "issues" on public APIs that intentionally allow cross-origin access
+3. Write a summary that tells the site owner what ACTUALLY matters. Don't pad it. If most findings are noise, say so.
+4. For each group, write a description that explains the real-world significance (or lack thereof) for THIS specific site.
 
-Return ONLY a valid JSON object with exactly these fields:
+Return ONLY valid JSON:
 {{
-  "summary": "4-5 sentences written for a non-technical person (think: business owner or founder, not a developer). Assess the overall security posture of the site. Explain why the site received the grade it did. Call out whether findings are genuine risks or likely scanner noise. Be direct, not alarmist.",
-  "priority_actions": ["[Quick fix] most important easy fix", "[Moderate] second most important", "[Major] third most important"],
+  "summary": "3-5 sentences. What is the actual security posture of this site? Which findings are real concerns vs scanner noise? Be specific and honest — if the site looks well-maintained, say so. If there are genuine risks, be clear about what they are.",
+  "priority_actions": ["[Quick fix] action", "[Moderate] action", "[Major] action"],
   "groups": [
     {{
-      "id": "<same id from input, unchanged>",
-      "title": "<rewritten title, contextual and specific>",
-      "description": "<nuanced description — if this is likely a false positive or low risk for this target, explain why>",
+      "id": "<same id from input>",
+      "title": "<specific, accurate title for this finding>",
+      "description": "<what this actually means for this site — reference the specific affected URLs/ports/headers. If it's likely not a real issue, explain why concretely>",
       "likely_false_positive": true or false,
-      "plain_english": "<explain this finding like you're talking to someone who doesn't know what a port, header, or SSL is. One sentence, no jargon, use everyday analogies.>",
-      "business_impact": "<what's the worst realistic thing that could happen if this isn't fixed? One sentence.>"
+      "plain_english": "<one sentence a non-technical person can understand. Use analogies to physical security when helpful.>",
+      "business_impact": "<one sentence: what could realistically happen if this isn't addressed? Say 'Low risk — no action needed' if it's genuinely not a concern.>"
     }}
   ]
 }}
 
 Rules:
-- "priority_actions" must have exactly 3 items. Each item must begin with one of: [Quick fix], [Moderate], or [Major]. If fewer than 3 real issues exist, fill remaining slots with "[Quick fix] No further action needed."
-- Every group from input must appear in "groups" output, same id
-- Do not change "severity" — only title, description, likely_false_positive, plain_english, business_impact
-- Respond with JSON only. No markdown, no explanation outside the JSON."""
+- "priority_actions": exactly 3 items. Each starts with [Quick fix], [Moderate], or [Major]. If fewer than 3 real issues, use "[Quick fix] No further action needed."
+- Every group from input must appear in output with the same id
+- Be specific — reference actual URLs, ports, headers from the data. Don't be generic.
+- JSON only. No markdown fences, no text outside the JSON."""
 
     try:
         from anthropic import AsyncAnthropic
@@ -208,7 +251,9 @@ Rules:
 
 async def analyse(request: AnalyseRequest) -> AnalysisResponse:
     issue_groups, pass_groups, pass_count = _group_findings(request.findings)
-    summary, priority_actions, enriched_groups = await _enrich_with_ai(request.target_url, issue_groups)
+    summary, priority_actions, enriched_groups = await _enrich_with_ai(
+        request.target_url, request.github_url, issue_groups, request.findings,
+    )
 
     all_groups = list(enriched_groups) + pass_groups
 
