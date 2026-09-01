@@ -87,7 +87,7 @@ async def _probe(client: httpx.AsyncClient, base: str, probe_id: str, path: str,
                 title=title,
                 description=f"{DESCRIPTION} Found at {url}.",
                 affected=url,
-                fix="Restrict access to this admin panel by IP or move it behind a VPN.",
+                fix="Restrict access to this panel. In nginx: `location /admin { allow 1.2.3.4; deny all; }`. In Apache: `<Location /admin> Require ip 1.2.3.4 </Location>`. Alternatively, put it behind a VPN or add HTTP basic auth as a second layer.",
                 category=Category.ADMIN,
             )
         elif probe_id == "admin_panel_wp" and resp.status_code == 302:

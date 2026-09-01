@@ -191,7 +191,7 @@ async def _check_redirect(hostname: str) -> Finding | None:
                 title="HTTP does not redirect to HTTPS",
                 description=f"Requesting http://{hostname} does not redirect to HTTPS.",
                 affected=f"http://{hostname}",
-                fix="Add an HTTP → HTTPS redirect in your web server config.",
+                fix="Add an HTTP to HTTPS redirect. In nginx: `server { listen 80; return 301 https://$host$request_uri; }`. In Apache: `RewriteEngine On` then `RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]`. On Cloudflare: enable 'Always Use HTTPS' in SSL settings.",
                 category=Category.SSL,
             )
     except httpx.RequestError:

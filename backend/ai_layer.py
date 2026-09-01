@@ -173,15 +173,17 @@ Scan findings (JSON):
 {json.dumps(groups_data, indent=2)}
 
 Your task:
-1. Look at the actual affected URLs/hosts and finding details. Assess whether each finding represents a REAL risk for this specific target.
-2. Scanners are blunt tools — they flag things that may not actually be problems. Common false positives:
-   - Large sites (Google, AWS, Cloudflare-proxied sites) intentionally omit certain headers or expose certain ports as part of their architecture
-   - Admin paths returning 200 may just be custom 404 pages or redirects to login
-   - Missing email security records on domains that don't send email
-   - Open ports that are behind load balancers or firewalls
-   - CORS "issues" on public APIs that intentionally allow cross-origin access
-3. Write a summary that tells the site owner what ACTUALLY matters. Don't pad it. If most findings are noise, say so.
-4. For each group, write a description that explains the real-world significance (or lack thereof) for THIS specific site.
+1. Look at the actual affected URLs/hosts and finding details. Assess each finding for this specific target.
+2. DEFAULT: Treat every finding as a real issue UNLESS you have concrete evidence it is not. A finding should only be marked as likely_false_positive if you can explain specifically why it does not apply to THIS site — not just because it "might" be intentional or "could" be behind a load balancer.
+3. Examples of when likely_false_positive should be TRUE (you need this level of certainty):
+   - The target is a well-known major platform (google.com, github.com, cloudflare.com) that is known to intentionally configure things this way
+   - The finding contradicts other findings (e.g., flagging missing HTTPS when another finding confirms HTTPS is working)
+4. Examples of when likely_false_positive should be FALSE (keep it as a real finding):
+   - Missing security headers — these are almost always real issues regardless of site size
+   - Open ports — unless you can name the specific reason this port should be open
+   - Missing email security records — flag it, the site owner can decide if they send email
+   - Any finding where you are unsure — default to treating it as real
+5. Write a summary that tells the site owner what matters. Be direct about what needs attention.
 
 Return ONLY valid JSON:
 {{
@@ -194,7 +196,8 @@ Return ONLY valid JSON:
       "description": "<what this actually means for this site — reference the specific affected URLs/ports/headers. If it's likely not a real issue, explain why concretely>",
       "likely_false_positive": true or false,
       "plain_english": "<2-3 sentences explaining this problem to someone with zero technical knowledge. What is actually happening, in normal words? Use physical-world analogies when they help — like doors, locks, windows, mail. Do not use any technical terms without immediately explaining them.>",
-      "business_impact": "<one sentence: what could realistically happen if this isn't addressed? Say 'Low risk — no action needed' if it's genuinely not a concern.>"
+      "business_impact": "<one sentence: what could realistically happen if this isn't addressed? Say 'Low risk — no action needed' if it's genuinely not a concern.>",
+      "fix": "<Step-by-step instructions to fix this specific issue. Be concrete: name the exact header to add, the exact config line to change, the exact command to run. If there are multiple approaches (nginx vs Apache vs cloud), give the most common one. 2-4 sentences max.>"
     }}
   ]
 }}
@@ -240,6 +243,7 @@ Rules:
                     "likely_false_positive": bool(g_data.get("likely_false_positive", False)),
                     "plain_english": g_data.get("plain_english", ""),
                     "business_impact": g_data.get("business_impact", ""),
+                    "fix": g_data.get("fix", original.fix),
                 })
 
         enriched = sorted(group_map.values(), key=lambda g: SEVERITY_ORDER.get(g.severity, 99))
